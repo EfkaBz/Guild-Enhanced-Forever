@@ -1,0 +1,45 @@
+## Interface: 11508, 11509, 11601, 16001
+## Title: Guild Enhanced Forever
+## Notes: A complete replacement for the guild window (J), in the game's own style
+## Author: Daeler
+## Version: 1.0.0
+## IconTexture: Interface\AddOns\Guild_Enhanced_Forever\adds\icon
+## X-Category: Guild
+## Category: Daeler Addons
+## SavedVariables: GuildEnhancedForeverDB
+## Title-frFR: Guild Enhanced Forever
+## Notes-frFR: Un remplacement complet de la fenêtre de guilde (J), dans le style du jeu
+
+Locales\Locales.lua
+Locales\frFR.lua
+Locales\deDE.lua
+Locales\esES.lua
+Locales\itIT.lua
+Locales\ptBR.lua
+Locales\ruRU.lua
+Locales\koKR.lua
+Locales\zhCN.lua
+Locales\zhTW.lua
+Core\Skin.lua
+Core\Widgets.lua
+Core\Core.lua
+Core\Net.lua
+Core\Forms.lua
+Core\Notify.lua
+UI\Main.lua
+UI\Roster.lua
+UI\Details.lua
+UI\Chat.lua
+UI\ChatHistory.lua
+UI\Board.lua
+UI\Events.lua
+UI\Professions.lua
+UI\Info.lua
+UI\Stats.lua
+UI\Log.lua
+UI\News.lua
+UI\Ranks.lua
+UI\Games.lua
+UI\GameDefs.lua
+UI\GameDefs2.lua
+UI\GameExtras.lua
