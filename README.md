@@ -29,7 +29,7 @@ Guild Enhanced Forever replaces the guild window (J) of World of Warcraft: Forev
 - **Guild chat:** guild and officer messages kept between sessions, online and offline notices, and the list of members online.
 - **Board:** announcements from the officers, pinned first, with a pop-up for new ones.
 - **Events:** a guild calendar with Present / Maybe / Absent, roles and a waiting list, plus a group finder.
-- **Professions:** a directory of the recipes your guildmates know, and craft requests.
+- **Professions:** pick a profession to see the guildmates who have it, their level and their recipes, and send craft requests.
 - **Information:** message of the day, guild information, overview tiles and class composition.
 - **Statistics:** most active members of the week, newcomers, level and class charts, seniority and anniversaries.
 - **Log, news and ranks:** joins, departures, promotions, guild news with item tooltips, and members by rank.
@@ -76,7 +76,7 @@ Guild Enhanced Forever remplace la fenêtre de guilde (J) de World of Warcraft: 
 - **Chat de guilde :** messages de guilde et d'officiers gardés entre les sessions, connexions et déconnexions, et liste des membres en ligne.
 - **Tableau :** annonces des officiers, épinglées en premier, avec une fenêtre pour les nouvelles.
 - **Événements :** calendrier de guilde avec Présent / Peut-être / Absent, rôles et liste d'attente, plus une recherche de groupe.
-- **Métiers :** annuaire des recettes connues par la guilde, et demandes de fabrication.
+- **Métiers :** choisissez un métier pour voir les membres qui l'ont, leur niveau et leurs recettes, et envoyez des demandes de fabrication.
 - **Informations :** message du jour, informations de guilde, vue d'ensemble et composition des classes.
 - **Statistiques :** membres les plus actifs de la semaine, nouveaux venus, graphiques de niveaux et de classes, ancienneté et anniversaires.
 - **Journal, actualités et rangs :** arrivées, départs, promotions, actualités de guilde avec infobulles d'objets, et membres par rang.

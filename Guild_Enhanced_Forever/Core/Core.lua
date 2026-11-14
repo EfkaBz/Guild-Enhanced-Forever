@@ -139,6 +139,10 @@ function ns.ScanRoster()
       ns.members[#ns.members + 1] = m
       ns.byName[name] = m
       ns.byName[m.short] = ns.byName[m.short] or m
+      -- WoW Forever: the roster shows "Daeler Backbi" (name + surname) while UnitName and the
+      -- senders of addon messages give the name alone ("Daeler"): index that too
+      local first = m.short:match("^(%S+)%s")
+      if first then ns.byName[first] = ns.byName[first] or m end
     end
   end
   ns.numOnline = online
@@ -485,6 +489,8 @@ SlashCmdList.GUILDENHANCEDFOREVER = function(msg)
     else
       ns.Print("/gui scale 0.6 - 1.6")
     end
+  elseif msg == "prof" and ns.ProfDebug then
+    ns.ProfDebug()
   elseif msg == "help" then
     ns.Print("/gui — " .. L["open or close the window"])
     ns.Print("/gui blizzard — " .. L["J opens the game's guild window instead (toggle)"])

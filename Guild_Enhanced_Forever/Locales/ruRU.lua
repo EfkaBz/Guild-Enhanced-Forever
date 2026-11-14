@@ -539,3 +539,5 @@ L["|cff1eff00%d|r online  ·  %d accounts (%d characters)  ·  %s"] = "|cff1eff0
 L["Accounts"] = "Уч. записи"
 L["The real number of players: the alts of the same account count once. Given by the server (/ginfo)."] = "Реальное число игроков: твинки одной учетной записи считаются один раз. Данные сервера (/ginfo)."
 L["Characters in the guild, alts included."] = "Персонажи в гильдии, включая твинков."
+L["Recipes of %s"] = "Рецепты: %s"
+L["Nobody in the guild has shared this profession yet."] = "Никто в гильдии ещё не поделился этой профессией."

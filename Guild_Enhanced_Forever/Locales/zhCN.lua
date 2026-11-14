@@ -539,3 +539,5 @@ L["|cff1eff00%d|r online  ·  %d accounts (%d characters)  ·  %s"] = "|cff1eff0
 L["Accounts"] = "账号"
 L["The real number of players: the alts of the same account count once. Given by the server (/ginfo)."] = "真实的玩家人数：同一账号的小号只算一次。由服务器提供（/ginfo）。"
 L["Characters in the guild, alts included."] = "公会中的角色，包括小号。"
+L["Recipes of %s"] = "%s 的配方"
+L["Nobody in the guild has shared this profession yet."] = "公会中还没有人分享这个专业。"

@@ -11,9 +11,10 @@ local Sync = ns.Sync
 local now = GetServerTime or time
 
 local PAGE = 5
-local LEFT_W, ROW_H, RECIPE_H, REQ_H = 360, 40, 26, 46
-local page, ui = nil, { rows = {}, recipes = {}, reqs = {} }
-local mode, search, profFilter, selected = "dir", "", "all", nil
+local PROF_W, MEM_W, PROF_H, ROW_H, RECIPE_H, REQ_H = 200, 290, 36, 40, 26, 46
+local page, ui = nil, { rows = {}, recipes = {}, reqs = {}, profRows = {} }
+local mode, search, profSel, selected = "dir", "", nil, nil
+local profPicked -- the player clicked a profession (else: the first one someone has)
 local me = UnitName("player")
 
 -- the professions: key -> spell (its name is the profession, in the client's language)
@@ -31,6 +32,15 @@ for _, p in ipairs(PROFS) do
   p.icon = "Interface\\Icons\\" .. p[3]
   PROF[p[1]] = p
   if name then byLocalName[name] = p[1] end
+end
+-- the spell names may not be known yet when the addon loads: asked again before each read
+local function ensureNames()
+  for _, p in ipairs(PROFS) do
+    if p.name == p[1] then
+      local name = ns.SpellInfo(p[2])
+      if name then p.name = name; byLocalName[name] = p[1] end
+    end
+  end
 end
 local function profName(key) return PROF[key] and PROF[key].name or key end
 local function profIcon(key) return PROF[key] and PROF[key].icon or "Interface\\Icons\\INV_Misc_QuestionMark" end
@@ -57,24 +67,93 @@ end
 -- My professions -----------------------------------------------------------------------------------
 local myProfs = {} -- key -> { r, m, rc = { codes } }
 
+-- skill line ids of the professions (the modern profession API gives them)
+local SKILL = { [171] = "alch", [164] = "bs", [333] = "ench", [202] = "eng", [182] = "herb", [165] = "lw",
+  [186] = "mine", [393] = "skin", [197] = "tail", [185] = "cook", [129] = "aid", [356] = "fish" }
+
 local function readSkills()
-  local found = {}
-  for i = 1, GetNumSkillLines and GetNumSkillLines() or 0 do
-    local name, isHeader, _, rank, _, _, maxRank = GetSkillLineInfo(i)
-    local key = name and not isHeader and byLocalName[name]
+  ensureNames()
+  local found, read = {}, false
+  local function add(name, rank, maxRank, skillLine)
+    local key = (name and byLocalName[name]) or SKILL[skillLine or 0]
     if key then
       found[key] = true
       myProfs[key] = myProfs[key] or { rc = {} }
-      myProfs[key].r, myProfs[key].m = rank, maxRank
+      myProfs[key].r, myProfs[key].m = rank or 0, maxRank or 0
+    end
+  end
+  local SI = C_SkillInfo
+  if SI and SI.GetNumSkillLines and SI.GetSkillLineInfo then
+    -- WoW Forever: the skill lines are in C_SkillInfo (one table per line)
+    for i = 1, SI.GetNumSkillLines() or 0 do
+      local ok, s = pcall(SI.GetSkillLineInfo, i)
+      if ok and type(s) == "table" then
+        read = true
+        if not s.isHeader then
+          add(s.name, s.rank, s.maxRank or s.max or s.skillMaxRank, s.skillLineID or s.skillLine or s.id)
+        end
+      end
+    end
+  elseif GetNumSkillLines and GetSkillLineInfo then
+    for i = 1, GetNumSkillLines() or 0 do
+      local name, isHeader, _, rank, _, _, maxRank = GetSkillLineInfo(i)
+      read = true
+      if not isHeader then add(name, rank, maxRank) end
+    end
+  elseif GetProfessions and GetProfessionInfo then
+    for _, idx in pairs({ GetProfessions() }) do
+      if idx then
+        local name, _, rank, maxRank, _, _, skillLine = GetProfessionInfo(idx)
+        read = true
+        add(name, rank, maxRank, skillLine)
+      end
     end
   end
   -- forgotten professions go away (only when the skills were read: the list is never empty)
-  if next(found) or (GetNumSkillLines and GetNumSkillLines() > 0) then
+  if read then
     for key in pairs(myProfs) do if not found[key] then myProfs[key] = nil end end
   end
 end
 
+-- WoW Forever: the profession window works with C_TradeSkillUI (the modern API)
+local function readModernTradeSkill()
+  ensureNames()
+  local T = C_TradeSkillUI
+  local ok, info = pcall(T.GetBaseProfessionInfo)
+  if not ok or type(info) ~= "table" then return end
+  -- someone else's recipes (a link) or an NPC: not mine
+  if (T.IsTradeSkillLinked and T.IsTradeSkillLinked()) or (T.IsTradeSkillGuild and T.IsTradeSkillGuild())
+    or (T.IsNPCCrafting and T.IsNPCCrafting()) then return end
+  local key = SKILL[info.professionID or 0] or SKILL[info.parentProfessionID or 0]
+    or byLocalName[info.parentProfessionName or ""] or byLocalName[info.professionName or ""]
+  if not key then return end
+  local ids = T.GetAllRecipeIDs and T.GetAllRecipeIDs() or {}
+  local codes, seen = {}, {}
+  for _, id in ipairs(ids) do
+    local rok, r = pcall(T.GetRecipeInfo, id)
+    if rok and type(r) == "table" and r.learned then
+      local link = T.GetRecipeItemLink and T.GetRecipeItemLink(id)
+      local item = link and link:match("item:(%d+)")
+      if not item and T.GetRecipeSchematic then
+        local sok, sch = pcall(T.GetRecipeSchematic, id, false)
+        if sok and type(sch) == "table" and sch.outputItemID then item = tostring(sch.outputItemID) end
+      end
+      local code
+      if link and (link:find("enchant:") or r.isEnchantingRecipe) then code = "e" .. id
+      elseif item then code = item end
+      if code and not seen[code] then seen[code] = true; codes[#codes + 1] = code end
+    end
+  end
+  if #codes == 0 then return end
+  myProfs[key] = myProfs[key] or {}
+  local p = myProfs[key]
+  p.r = info.skillLevel or p.r or 0
+  p.m = info.maxSkillLevel or p.m or 0
+  p.rc = codes
+end
+
 local function readTradeSkill()
+  if C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo then return readModernTradeSkill() end
   if not GetTradeSkillLine then return end
   local name, rank, maxRank = GetTradeSkillLine()
   local key = name and byLocalName[name]
@@ -113,6 +192,28 @@ local function readCraft()
   myProfs[key].r, myProfs[key].m, myProfs[key].rc = rank, maxRank, codes
 end
 
+-- /gui prof: what the addon reads (to understand an empty directory)
+function ns.ProfDebug()
+  local out = {}
+  local function say(s) out[#out + 1] = s end
+  say("sync " .. tostring(Sync.Started()) .. ", me " .. tostring(me) .. " -> " .. tostring(ns.byName[me] and ns.byName[me].name))
+  say("C_SkillInfo " .. tostring(C_SkillInfo and C_SkillInfo.GetNumSkillLines and C_SkillInfo.GetNumSkillLines())
+    .. ", GetNumSkillLines " .. tostring(GetNumSkillLines and GetNumSkillLines())
+    .. ", C_TradeSkillUI " .. tostring(C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo and true))
+  readSkills()
+  readTradeSkill()
+  for key, p in pairs(myProfs) do say(profName(key) .. " " .. tostring(p.r) .. "/" .. tostring(p.m) .. ", " .. #(p.rc or {}) .. " recipes") end
+  if not next(myProfs) and C_SkillInfo and C_SkillInfo.GetSkillLineInfo then
+    for i = 1, math.min(C_SkillInfo.GetNumSkillLines() or 0, 12) do
+      local s = C_SkillInfo.GetSkillLineInfo(i)
+      if type(s) == "table" then say("  line " .. i .. ": " .. tostring(s.name) .. " " .. tostring(s.skillLineID)) end
+    end
+  end
+  say("shared records: " .. #Sync.All("prof"))
+  for _, s in ipairs(out) do ns.Print(s) end
+  if ns.ProfPush then ns.ProfPush() end
+end
+
 local function encode()
   local list = {}
   for key, p in pairs(myProfs) do
@@ -136,6 +237,7 @@ local function push()
     Sync.Put("prof", { id = me, p = list })
   end)
 end
+ns.ProfPush = push
 
 Sync.Register("prof", {
   keep = 30 * 86400,
@@ -144,9 +246,12 @@ Sync.Register("prof", {
     -- what was shared last time is the start (recipes are read again when the windows open)
     local old = Sync.Get("prof", me)
     for _, p in ipairs(old and old.p or {}) do
-      local codes = {}
-      for c in (p.rc or ""):gmatch("[^,]+") do codes[#codes + 1] = c end
-      myProfs[p.k] = { r = p.r, m = p.m, rc = codes }
+      local cur = myProfs[p.k]
+      if not (cur and cur.rc and #cur.rc > 0) then -- (a window read before the start wins)
+        local codes = {}
+        for c in (p.rc or ""):gmatch("[^,]+") do codes[#codes + 1] = c end
+        myProfs[p.k] = { r = cur and cur.r or p.r, m = cur and cur.m or p.m, rc = codes }
+      end
     end
     readSkills()
     push()
@@ -154,14 +259,25 @@ Sync.Register("prof", {
 })
 
 local pev = CreateFrame("Frame")
-for _, e in ipairs({ "SKILL_LINES_CHANGED", "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "CRAFT_SHOW", "CRAFT_UPDATE" }) do
+for _, e in ipairs({ "SKILL_LINES_CHANGED", "TRADE_SKILL_SHOW", "TRADE_SKILL_UPDATE", "CRAFT_SHOW", "CRAFT_UPDATE",
+  "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED", "NEW_RECIPE_LEARNED" }) do
   pcall(pev.RegisterEvent, pev, e)
 end
+-- the recipe list fires many updates in a row: read once, a moment after the last one
+local readPending
 pev:SetScript("OnEvent", function(_, event)
-  if not Sync.Started() then return end
   if event == "SKILL_LINES_CHANGED" then readSkills()
-  elseif event:find("^TRADE") then readTradeSkill()
-  else readCraft() end
+  elseif event:find("^CRAFT") then readCraft()
+  else
+    if readPending then return end
+    readPending = true
+    C_Timer.After(0.5, function()
+      readPending = nil
+      readTradeSkill()
+      push()
+    end)
+    return
+  end
   push()
 end)
 
@@ -174,7 +290,7 @@ local function entries()
       for _, p in ipairs(rec.p or {}) do
         local codes = {}
         for c in (p.rc or ""):gmatch("[^,]+") do codes[#codes + 1] = c end
-        list[#list + 1] = { who = rec.id, key = p.k, r = p.r or 0, m = p.m or 0, codes = codes, id = rec.id .. ":" .. p.k }
+        list[#list + 1] = { who = rec.id, disp = ns.byName[rec.id].short or rec.id, key = p.k, r = p.r or 0, m = p.m or 0, codes = codes, id = rec.id .. ":" .. p.k }
       end
     end
   end
@@ -183,13 +299,42 @@ end
 
 local function matches(e, text)
   if text == "" then return true, nil end
-  if e.who:lower():find(text, 1, true) or profName(e.key):lower():find(text, 1, true) then return true, nil end
+  if (e.disp or e.who):lower():find(text, 1, true) or profName(e.key):lower():find(text, 1, true) then return true, nil end
   local hits = 0
   for _, code in ipairs(e.codes) do
     local name = recipeInfo(code)
     if name:lower():find(text, 1, true) then hits = hits + 1 end
   end
   return hits > 0, hits
+end
+
+-- a profession in the left column: icon, name, how many guildmates have it
+local function profRow(i)
+  if ui.profRows[i] then return ui.profRows[i] end
+  local r = CreateFrame("Button", nil, ui.profList)
+  r:SetHeight(PROF_H - 2)
+  r:SetPoint("TOPLEFT", 0, -(i - 1) * PROF_H)
+  r:SetPoint("TOPRIGHT", 0, -(i - 1) * PROF_H)
+  S.RowHighlight(r)
+  r.sel = r:CreateTexture(nil, "BACKGROUND")
+  r.sel:SetAllPoints()
+  S.Highlight(r.sel, 0.25)
+  r.icon = S.Icon(r, 24)
+  r.icon:SetPoint("LEFT", 6, 0)
+  r.name = S.Text(r, 12, "text")
+  r.name:SetPoint("LEFT", r.icon, "RIGHT", 8, 0)
+  r.name:SetPoint("RIGHT", -34, 0)
+  r.name:SetJustifyH("LEFT")
+  r.count = S.Text(r, 12, "gold")
+  r.count:SetPoint("RIGHT", -10, 0)
+  r.count:SetJustifyH("RIGHT")
+  r:SetScript("OnClick", function(self)
+    profSel, profPicked = self.key, true
+    selected = nil
+    ns.RefreshProfessions(true)
+  end)
+  ui.profRows[i] = r
+  return r
 end
 
 local function entryRow(i)
@@ -207,11 +352,13 @@ local function entryRow(i)
   r.icon:SetPoint("LEFT", 6, 0)
   r.name = S.Text(r, 12, "text")
   r.name:SetPoint("TOPLEFT", r.icon, "TOPRIGHT", 8, 0)
+  r.name:SetPoint("RIGHT", -100, 0)
+  r.name:SetJustifyH("LEFT")
   r.prof = S.Text(r, 10, "muted")
   r.prof:SetPoint("BOTTOMLEFT", r.icon, "BOTTOMRIGHT", 8, 0)
   r.bar = S.ProgressBar(r, 6)
   r.bar:SetPoint("RIGHT", -10, -6)
-  r.bar:SetWidth(110)
+  r.bar:SetWidth(80)
   r.lvl = S.Text(r, 11, "dim")
   r.lvl:SetPoint("BOTTOMRIGHT", r.bar, "TOPRIGHT", 0, 3)
   r.lvl:SetJustifyH("RIGHT")
@@ -422,30 +569,61 @@ function ns.RefreshProfessions(animate)
   if mode ~= "dir" then return end
 
   local text = search:lower()
-  local list = {}
-  for _, e in ipairs(entries()) do
-    if profFilter == "all" or e.key == profFilter then
-      local ok, hits = matches(e, text)
-      if ok then e.hits = hits; list[#list + 1] = e end
+  local all = entries()
+  -- professions column: how many guildmates have each one (matching the search)
+  local counts, byProf = {}, {}
+  for _, e in ipairs(all) do
+    local ok, hits = matches(e, text)
+    if ok then
+      e.hits = hits
+      counts[e.key] = (counts[e.key] or 0) + 1
+      byProf[e.key] = byProf[e.key] or {}
+      table.insert(byProf[e.key], e)
     end
   end
+  local profs = {}
+  for _, pr in ipairs(PROFS) do profs[#profs + 1] = pr end
+  table.sort(profs, function(a, b) return a.name < b.name end)
+  -- default: the first profession someone has
+  if not profSel or (not counts[profSel] and (text ~= "" or not profPicked)) then
+    profSel = nil
+    for _, pr in ipairs(profs) do if counts[pr[1]] then profSel = pr[1] break end end
+    profSel = profSel or profs[1][1]
+  end
+  for i, pr in ipairs(profs) do
+    local r = profRow(i)
+    r.key = pr[1]
+    r.icon.tex:SetTexture(pr.icon)
+    r.name:SetText(pr.name)
+    local n = counts[pr[1]] or 0
+    r.count:SetText(n > 0 and n or "")
+    r.name:SetAlpha(n > 0 and 1 or 0.5)
+    r.icon:SetAlpha(n > 0 and 1 or 0.5)
+    r.sel:SetShown(pr[1] == profSel)
+    r:Show()
+  end
+  ui.profTitle.right:SetText(#all > 0 and #all or "")
+
+  -- members column: the guildmates with the selected profession, best level first
+  local list = byProf[profSel] or {}
   table.sort(list, function(a, b)
-    if a.key ~= b.key then return profName(a.key) < profName(b.key) end
     if a.r ~= b.r then return a.r > b.r end
-    return a.who < b.who
+    return (a.disp or a.who) < (b.disp or b.who)
   end)
+  ui.memTitle.label:SetText(profName(profSel))
+  ui.memTitle.right:SetText(#list > 0 and #list or "")
   local found
   for i, e in ipairs(list) do
     local r = entryRow(i)
     r.entry = e
     if e.id == selected then found = e end
     local m = ns.byName[e.who]
-    r.icon.tex:SetTexture(profIcon(e.key))
-    r.name:SetText(e.who .. (m and m.online and "" or "  |cff999999·|r"))
+    ns.SetClassIcon(r.icon.tex, m and m.classFile)
+    r.name:SetText((e.disp or e.who) .. (m and m.online and "" or "  |cff999999·|r"))
     r.name:SetTextColor(ns.ClassColor(m and m.classFile))
     r.name:SetAlpha(m and m.online and 1 or 0.65)
-    r.prof:SetText(profName(e.key) .. "  ·  " .. (e.hits and string.format(L["%d matching"], e.hits)
-      or string.format(L["%d recipes"], #e.codes)))
+    r.prof:SetText((m and m.online and ("|cff1eff00" .. L["Online"] .. "|r  ·  ") or "")
+      .. (e.hits and string.format(L["%d matching"], e.hits) or string.format(L["%d recipes"], #e.codes)))
     r.lvl:SetText(e.r .. " / " .. e.m)
     r.bar:SetValue(e.m > 0 and e.r / e.m or 0)
     r:Show()
@@ -454,13 +632,13 @@ function ns.RefreshProfessions(animate)
   for i = #list + 1, #ui.rows do ui.rows[i]:Hide() end
   ui.listContent:SetHeight(math.max(1, #list * ROW_H))
   ui.dirEmpty:SetShown(#list == 0)
-  ui.dirEmpty:SetText(#entries() == 0 and L["Nobody has shared professions yet. Open your profession windows once: Guild Enhanced shares your recipes with the guild."]
-    or L["No result."])
+  ui.dirEmpty:SetText(#all == 0 and L["Nobody has shared professions yet. Open your profession windows once: Guild Enhanced shares your recipes with the guild."]
+    or text ~= "" and L["No result."] or L["Nobody in the guild has shared this profession yet."])
   if not found then found = list[1]; selected = found and found.id end
   for _, r in ipairs(ui.rows) do if r:IsShown() then r.sel:SetShown(r.entry.id == selected) end end
 
   -- recipes of the selected one
-  ui.recipeTitle.label:SetText(found and (profName(found.key) .. "  ·  " .. found.who) or L["Recipes"])
+  ui.recipeTitle.label:SetText(found and string.format(L["Recipes of %s"], found.disp or found.who) or L["Recipes"])
   local n = 0
   if found then
     local recs = {}
@@ -506,16 +684,8 @@ local function build(p)
   end
   ui.newReq = S.Button(p, L["New request"], 140, 22, function() ns.CraftRequest() end, "primary")
   ui.newReq:SetPoint("TOPRIGHT")
-  local opts = { { "all", L["All professions"] } }
-  for _, pr in ipairs(PROFS) do opts[#opts + 1] = { pr[1], pr.name } end
-  ui.filter = S.Dropdown(p, 160, opts, function() return profFilter end, function(v)
-    profFilter = v
-    selected = nil
-    ns.RefreshProfessions(true)
-  end)
-  ui.filter:SetPoint("RIGHT", ui.newReq, "LEFT", -8, 0)
-  ui.search = S.EditBox(p, 200, 22, L["Search a recipe or a name"])
-  ui.search:SetPoint("RIGHT", ui.filter, "LEFT", -8, 0)
+  ui.search = S.EditBox(p, 220, 22, L["Search a recipe or a name"])
+  ui.search:SetPoint("RIGHT", ui.newReq, "LEFT", -8, 0)
   local pendingSearch
   ui.search.onChange = function(t)
     search = t or ""
@@ -529,35 +699,53 @@ local function build(p)
   dir:SetPoint("TOPLEFT", 0, -32)
   dir:SetPoint("BOTTOMRIGHT")
   ui.dir = dir
+  -- 1. the professions
+  local profBox = CreateFrame("Frame", nil, dir)
+  profBox:SetPoint("TOPLEFT")
+  profBox:SetPoint("BOTTOMLEFT")
+  profBox:SetWidth(PROF_W)
+  S.Card(profBox, 8)
+  ui.profTitle = S.Section(profBox, L["Professions"])
+  ui.profTitle:SetPoint("TOPLEFT", 12, -10)
+  ui.profTitle:SetPoint("TOPRIGHT", -12, -10)
+  ui.profList = CreateFrame("Frame", nil, profBox)
+  ui.profList:SetPoint("TOPLEFT", 6, -40)
+  ui.profList:SetPoint("BOTTOMRIGHT", -6, 6)
+
+  -- 2. the guildmates with the selected profession
   local left = CreateFrame("Frame", nil, dir)
-  left:SetPoint("TOPLEFT")
-  left:SetPoint("BOTTOMLEFT")
-  left:SetWidth(LEFT_W)
+  left:SetPoint("TOPLEFT", PROF_W + 10, 0)
+  left:SetPoint("BOTTOMLEFT", PROF_W + 10, 0)
+  left:SetWidth(MEM_W)
   S.Card(left, 8)
+  ui.memTitle = S.Section(left, "")
+  ui.memTitle:SetPoint("TOPLEFT", 12, -10)
+  ui.memTitle:SetPoint("TOPRIGHT", -12, -10)
   local sf, content = S.Scroll(left)
-  sf:SetPoint("TOPLEFT", 6, -6)
+  sf:SetPoint("TOPLEFT", 6, -40)
   sf:SetPoint("BOTTOMRIGHT", -14, 6)
-  content:SetWidth(LEFT_W - 22)
+  content:SetWidth(MEM_W - 22)
   ui.listContent = content
   ui.dirEmpty = S.Text(left, 12, "muted")
-  ui.dirEmpty:SetPoint("TOPLEFT", 16, -20)
-  ui.dirEmpty:SetPoint("TOPRIGHT", -16, -20)
+  ui.dirEmpty:SetPoint("TOPLEFT", 16, -60)
+  ui.dirEmpty:SetPoint("TOPRIGHT", -16, -60)
   ui.dirEmpty:SetWordWrap(true)
   ui.dirEmpty:SetJustifyH("CENTER")
 
+  -- 3. the recipes of the selected guildmate
   local right = CreateFrame("Frame", nil, dir)
-  right:SetPoint("TOPLEFT", LEFT_W + 12, 0)
+  right:SetPoint("TOPLEFT", PROF_W + MEM_W + 20, 0)
   right:SetPoint("BOTTOMRIGHT")
   S.Card(right, 10)
   S.EdgeGlow(right, 24, 0.1)
   ui.recipeBox = right
   ui.recipeTitle = S.Section(right, L["Recipes"])
-  ui.recipeTitle:SetPoint("TOPLEFT", 14, -12)
-  ui.recipeTitle:SetPoint("TOPRIGHT", -14, -12)
+  ui.recipeTitle:SetPoint("TOPLEFT", 14, -10)
+  ui.recipeTitle:SetPoint("TOPRIGHT", -14, -10)
   local rsf, rcontent = S.Scroll(right)
-  rsf:SetPoint("TOPLEFT", 10, -42)
+  rsf:SetPoint("TOPLEFT", 10, -40)
   rsf:SetPoint("BOTTOMRIGHT", -18, 10)
-  rcontent:SetWidth(ns.PAGE_W - LEFT_W - 12 - 30)
+  rcontent:SetWidth(ns.PAGE_W - PROF_W - MEM_W - 20 - 30)
   ui.recipeContent = rcontent
   ui.recipeEmpty = S.Text(right, 12, "muted")
   ui.recipeEmpty:SetPoint("TOPLEFT", 20, -60)

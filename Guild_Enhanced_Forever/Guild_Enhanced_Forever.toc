@@ -2,7 +2,7 @@
 ## Title: Guild Enhanced Forever
 ## Notes: A complete replacement for the guild window (J), in the game's own style
 ## Author: Daeler
-## Version: 1.0.0
+## Version: 1.0.1
 ## IconTexture: Interface\AddOns\Guild_Enhanced_Forever\adds\icon
 ## X-Category: Guild
 ## Category: Daeler Addons

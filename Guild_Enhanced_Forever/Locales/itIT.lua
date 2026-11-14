@@ -539,3 +539,5 @@ L["|cff1eff00%d|r online  ·  %d accounts (%d characters)  ·  %s"] = "|cff1eff0
 L["Accounts"] = "Account"
 L["The real number of players: the alts of the same account count once. Given by the server (/ginfo)."] = "Il vero numero di giocatori: gli alt dello stesso account contano una volta. Fornito dal server (/ginfo)."
 L["Characters in the guild, alts included."] = "Personaggi nella gilda, alt inclusi."
+L["Recipes of %s"] = "Ricette di %s"
+L["Nobody in the guild has shared this profession yet."] = "Nessuno nella gilda ha ancora condiviso questa professione."

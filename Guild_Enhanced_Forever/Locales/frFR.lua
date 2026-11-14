@@ -539,3 +539,5 @@ L["|cff1eff00%d|r online  ·  %d accounts (%d characters)  ·  %s"] = "|cff1eff0
 L["Accounts"] = "Comptes"
 L["The real number of players: the alts of the same account count once. Given by the server (/ginfo)."] = "Le vrai nombre de joueurs : les rerolls d'un même compte ne comptent qu'une fois. Donné par le serveur (/ginfo)."
 L["Characters in the guild, alts included."] = "Personnages dans la guilde, rerolls compris."
+L["Recipes of %s"] = "Recettes de %s"
+L["Nobody in the guild has shared this profession yet."] = "Personne dans la guilde n'a encore partagé ce métier."

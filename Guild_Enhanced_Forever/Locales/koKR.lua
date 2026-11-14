@@ -539,3 +539,5 @@ L["|cff1eff00%d|r online  ·  %d accounts (%d characters)  ·  %s"] = "|cff1eff0
 L["Accounts"] = "계정"
 L["The real number of players: the alts of the same account count once. Given by the server (/ginfo)."] = "실제 플레이어 수: 같은 계정의 부캐릭터는 한 번만 셉니다. 서버 제공 (/ginfo)."
 L["Characters in the guild, alts included."] = "부캐릭터를 포함한 길드 내 캐릭터."
+L["Recipes of %s"] = "%s의 제조법"
+L["Nobody in the guild has shared this profession yet."] = "아직 길드에서 이 전문 기술을 공유한 사람이 없습니다."
