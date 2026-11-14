@@ -241,6 +241,7 @@ mev:RegisterEvent("CHAT_MSG_GUILD")
 mev:RegisterEvent("CHAT_MSG_OFFICER")
 mev:RegisterEvent("CHAT_MSG_SYSTEM")
 mev:SetScript("OnEvent", function(_, event, msg, author)
+  if ns.Secret(msg, author) then return end
   if event == "CHAT_MSG_SYSTEM" then
     -- "[Name] has come online."
     local name = msg and msg:match("|Hplayer:([^:|]+)")

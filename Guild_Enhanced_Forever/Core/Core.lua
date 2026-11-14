@@ -31,6 +31,17 @@ end
 
 function ns.Print(msg) DEFAULT_CHAT_FRAME:AddMessage(ns.PREFIX .. msg) end
 
+-- "secret" values: on this client some event arguments (chat lines, senders) can't be read by an
+-- addon (any use is an error); true when one of the values is secret: the event is then skipped
+local issecret = issecretvalue
+function ns.Secret(...)
+  if not issecret then return false end
+  for i = 1, select("#", ...) do
+    if issecret((select(i, ...))) then return true end
+  end
+  return false
+end
+
 -- name and icon of a spell, with the old API (GetSpellInfo) or the new one (C_Spell, a table)
 function ns.SpellInfo(id)
   if C_Spell and C_Spell.GetSpellInfo then
@@ -453,9 +464,10 @@ ev:SetScript("OnEvent", function(_, event, arg1)
     queue("roster"); queue("guild")
     ns.RequestRoster()
   elseif event == "GUILD_MOTD" then
-    storeMOTD(arg1)
+    if not ns.Secret(arg1) then storeMOTD(arg1) end
     queue("guild")
   elseif event == "CHAT_MSG_SYSTEM" then
+    if ns.Secret(arg1) then return end
     local text = motdPattern and type(arg1) == "string" and arg1:match(motdPattern)
     if text then storeMOTD(text); queue("guild") end
   elseif event == "GUILD_RANKS_UPDATE" then

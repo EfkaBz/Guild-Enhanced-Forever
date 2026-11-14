@@ -276,7 +276,7 @@ cap:RegisterEvent("CHAT_MSG_GUILD")
 cap:RegisterEvent("CHAT_MSG_OFFICER")
 cap:RegisterEvent("CHAT_MSG_SYSTEM")
 cap:SetScript("OnEvent", function(_, event, msg, sender, _, _, _, _, _, _, _, _, _, guid)
-  if not ns.db or not IsInGuild() then return end
+  if not ns.db or not IsInGuild() or ns.Secret(msg, sender, guid) then return end
   if event == "CHAT_MSG_GUILD" or event == "CHAT_MSG_OFFICER" then
     add({ t = now(), ch = event == "CHAT_MSG_GUILD" and "GUILD" or "OFFICER", name = sender,
       class = classOf(guid), msg = msg })

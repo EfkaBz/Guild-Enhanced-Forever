@@ -45,7 +45,8 @@ local function collect(streamId)
     local ok2, msgs = pcall(Club.GetMessagesInRange, clubId, streamId, r.oldestMessageId, r.newestMessageId)
     if ok2 and msgs then
       for _, m in ipairs(msgs) do
-        if not m.destroyed and m.content and m.content ~= "" and m.author then
+        if not ns.Secret(m.content, m.author and m.author.name) and not m.destroyed and m.content
+          and m.content ~= "" and m.author then
           entries[#entries + 1] = {
             t = math.floor((m.messageId.epoch or 0) / 1000000), -- microseconds
             ch = st.ch, name = m.author.name, class = classFileOf(m.author.classID), msg = m.content,

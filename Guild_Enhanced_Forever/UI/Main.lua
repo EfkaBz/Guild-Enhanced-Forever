@@ -107,7 +107,7 @@ end
 
 -- number of accounts in a /ginfo answer, or nil
 local function parseAccounts(msg)
-  if type(msg) ~= "string" then return nil end
+  if ns.Secret(msg) or type(msg) ~= "string" then return nil end
   if infoPattern then
     local caps = { msg:match(infoPattern) }
     if #caps == #infoOrder then

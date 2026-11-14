@@ -635,7 +635,7 @@ do
     local ev = CreateFrame("Frame", nil, f)
     ev:RegisterEvent("CHAT_MSG_SYSTEM")
     ev:SetScript("OnEvent", function(_, _, msg)
-      if not waiting or not msg then return end
+      if not waiting or not msg or ns.Secret(msg) then return end
       local who, v, lo, hi = msg:match(ROLL)
       if who and ns.Short(who) == ns.GameMe() and tonumber(lo) == 1 and tonumber(hi) == waiting then
         waiting = nil

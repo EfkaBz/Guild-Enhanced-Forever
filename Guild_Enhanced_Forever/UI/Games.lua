@@ -296,6 +296,7 @@ ev:RegisterEvent("CHAT_MSG_ADDON")
 ev:RegisterEvent("PLAYER_ENTERING_WORLD")
 local started
 ev:SetScript("OnEvent", function(_, event, prefix, msg, channel, sender)
+  if ns.Secret(prefix, msg, channel, sender) then return end
   if event == "PLAYER_ENTERING_WORLD" then
     if not started then
       started = true

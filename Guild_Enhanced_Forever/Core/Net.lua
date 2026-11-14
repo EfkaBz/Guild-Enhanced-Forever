@@ -160,6 +160,7 @@ local me = UnitName("player")
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("CHAT_MSG_ADDON")
 ev:SetScript("OnEvent", function(_, _, prefix, text, channel, sender)
+  if ns.Secret(prefix, text, channel, sender) then return end
   if prefix ~= PREFIX or not text or not sender then return end
   local name = ns.Short(sender)
   if name == me then return end
