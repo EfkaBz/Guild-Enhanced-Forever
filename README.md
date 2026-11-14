@@ -26,7 +26,7 @@ Guild Enhanced Forever replaces the guild window (J) of World of Warcraft: Forev
 - **Roster:** search by name, zone or note, filter by rank, class and online status, sort any column. Double-click to whisper, right-click for every action.
 - **Member card:** rank, level, zone, notes, last online and a 3D portrait when the player is near you.
 - **Real player count:** the number of accounts in the guild, with the alts of the same account counted once (read from `/ginfo`).
-- **Guild chat:** guild and officer messages kept between sessions, online and offline notices, and the list of members online.
+- **Guild chat:** guild and officer messages kept between sessions, without the online and offline spam, and the list of members online.
 - **Board:** announcements from the officers, pinned first, with a pop-up for new ones.
 - **Events:** a guild calendar with Present / Maybe / Absent, roles and a waiting list, plus a group finder.
 - **Professions:** pick a profession to see the guildmates who have it, their level and their recipes, and send craft requests.
@@ -73,7 +73,7 @@ Guild Enhanced Forever remplace la fenêtre de guilde (J) de World of Warcraft: 
 - **Membres :** recherche par nom, zone ou note, filtres par rang, classe et présence, tri sur chaque colonne. Double-clic pour chuchoter, clic droit pour toutes les actions.
 - **Fiche membre :** rang, niveau, zone, notes, dernière connexion et portrait 3D quand le joueur est près de vous.
 - **Vrai nombre de joueurs :** le nombre de comptes de la guilde, les rerolls d'un même compte comptés une seule fois (lu depuis `/ginfo`).
-- **Chat de guilde :** messages de guilde et d'officiers gardés entre les sessions, connexions et déconnexions, et liste des membres en ligne.
+- **Chat de guilde :** messages de guilde et d'officiers gardés entre les sessions, sans le spam des connexions et déconnexions, et liste des membres en ligne.
 - **Tableau :** annonces des officiers, épinglées en premier, avec une fenêtre pour les nouvelles.
 - **Événements :** calendrier de guilde avec Présent / Peut-être / Absent, rôles et liste d'attente, plus une recherche de groupe.
 - **Métiers :** choisissez un métier pour voir les membres qui l'ont, leur niveau et leurs recettes, et envoyez des demandes de fabrication.

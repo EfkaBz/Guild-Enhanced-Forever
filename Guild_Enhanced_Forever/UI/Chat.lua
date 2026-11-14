@@ -1,5 +1,5 @@
 -- Guild Enhanced Forever: guild chat page: guild and officer messages (kept between sessions),
--- members coming online / going offline, input line with a Guild / Officer switch, and the
+-- input line with a Guild / Officer switch, and the
 -- list of members online on the right
 local ADDON, ns = ...
 local S, L = ns.Skin, ns.L
@@ -42,26 +42,18 @@ local function classHex(e)
   return m and ns.ClassHex(m.classFile) or "ffd8d0e8"
 end
 
--- colored dot as an inline texture (the game font has no bullet glyph)
-local function dot(r, g, b)
-  return string.format("|T%sDot:8:8:0:0:32:32:0:32:0:32:%d:%d:%d|t", S.MEDIA, r, g, b)
-end
-
 local function format(e)
   local time = "|cff808080" .. date("%H:%M", e.t) .. "|r "
   local short = ns.Short(e.name)
   local link = "|Hplayer:" .. (e.name or "") .. "|h|c" .. classHex(e) .. short .. "|r|h"
-  if e.ch == "ONLINE" then
-    return time .. dot(107, 219, 139) .. " " .. string.format(L["%s is now online."], link), 0.62, 0.58, 0.72
-  elseif e.ch == "OFFLINE" then
-    return time .. dot(111, 101, 136) .. " " .. string.format(L["%s went offline."], link), 0.5, 0.47, 0.58
-  end
   local tag = e.ch == "OFFICER" and ("|cff40c040[" .. L["Officer"] .. "]|r ") or ""
   local r, g, b = chatColor(e.ch)
   return time .. tag .. "[" .. link .. "]: " .. (e.msg or ""), r, g, b
 end
 
 local function visible(e)
+  -- online / offline notices are no longer shown (old saved ones included)
+  if e.ch ~= "GUILD" and e.ch ~= "OFFICER" then return false end
   if filter == "all" then return true end
   if filter == "GUILD" then return e.ch == "GUILD" end
   if filter == "OFFICER" then return e.ch == "OFFICER" end
@@ -255,15 +247,6 @@ function ns.ChatMerge(entries, window, unreadAfter)
 end
 
 -- Capture (always on, even while the window is closed) -----------------------------------------------
--- "%s has come online." style formats from the game, turned into patterns
-local function toPattern(fmt)
-  if not fmt then return nil end
-  fmt = fmt:gsub("([%(%)%.%%%+%-%*%?%[%]%^%$])", "%%%1")
-  return "^" .. fmt:gsub("%%%%s", "(.-)") .. "$"
-end
-local ONLINE = toPattern(ERR_FRIEND_ONLINE_SS)
-local OFFLINE = toPattern(ERR_FRIEND_OFFLINE_S)
-
 local function classOf(guid)
   if guid and guid ~= "" and GetPlayerInfoByGUID then
     local _, cls = GetPlayerInfoByGUID(guid)
@@ -274,21 +257,10 @@ end
 local cap = CreateFrame("Frame")
 cap:RegisterEvent("CHAT_MSG_GUILD")
 cap:RegisterEvent("CHAT_MSG_OFFICER")
-cap:RegisterEvent("CHAT_MSG_SYSTEM")
 cap:SetScript("OnEvent", function(_, event, msg, sender, _, _, _, _, _, _, _, _, _, guid)
   if not ns.db or not IsInGuild() or ns.Secret(msg, sender, guid) then return end
-  if event == "CHAT_MSG_GUILD" or event == "CHAT_MSG_OFFICER" then
-    add({ t = now(), ch = event == "CHAT_MSG_GUILD" and "GUILD" or "OFFICER", name = sender,
-      class = classOf(guid), msg = msg })
-  elseif event == "CHAT_MSG_SYSTEM" and msg then
-    local name = ONLINE and msg:match(ONLINE)
-    local kind = "ONLINE"
-    if not name and OFFLINE then name, kind = msg:match(OFFLINE), "OFFLINE" end
-    if not name then return end
-    name = name:match("^([^%[%]]+)$") or name -- "[Name]" from the link text
-    local m = ns.byName[name] or ns.byName[ns.Short(name)]
-    if m then add({ t = now(), ch = kind, name = m.name, class = m.classFile }) end
-  end
+  add({ t = now(), ch = event == "CHAT_MSG_GUILD" and "GUILD" or "OFFICER", name = sender,
+    class = classOf(guid), msg = msg })
 end)
 
 -- Online list (right) -------------------------------------------------------------------------------
