@@ -65,11 +65,6 @@ local function call(...)
   return function() end
 end
 local RequestRoster   = call(G.GuildRoster, GuildRoster)
-local Promote         = call(GuildPromote, G.Promote)
-local Demote          = call(GuildDemote, G.Demote)
-local Uninvite        = call(GuildUninvite, G.Uninvite, G.RemoveFromGuild)
-local Invite          = call(GuildInvite, G.Invite)
-local SetLeader       = call(GuildSetLeader, G.SetLeader)
 local Leave           = call(GuildLeave, G.Leave)
 local SetMOTD         = call(GuildSetMOTD, G.SetMOTD)
 local InviteGroup     = call(C_PartyInfo and C_PartyInfo.InviteUnit, InviteUnit)
@@ -262,27 +257,32 @@ function ns.CanMakeLeader(m) return m and not isMe(m) and ns.Can.leader() end
 -- Actions -----------------------------------------------------------------------------
 function ns.Whisper(m) if m then ChatFrame_SendTell(m.name) end end
 function ns.GroupInvite(m) if m then InviteGroup(m.name) end end
-function ns.Promote(m) if ns.CanPromote(m) then Promote(m.name) end end
-function ns.Demote(m) if ns.CanDemote(m) then Demote(m.name) end end
+-- promote / demote open the rank window (Core\RankPicker.lua), the next rank up or down preselected
+function ns.Promote(m) if ns.CanPromote(m) then ns.ChangeRank(m, -1) end end
+function ns.Demote(m) if ns.CanDemote(m) then ns.ChangeRank(m, 1) end end
 
 function ns.Remove(m)
   if not ns.CanRemove(m) then return end
-  ns.Skin.Dialog({
+  -- GuildUninvite is protected on this client: the game's /gremove runs from a secure button
+  local cmd = _G.SLASH_GUILD_UNINVITE1 or "/gremove"
+  ns.SecureAsk({
     title = L["Remove from guild"],
     text = string.format(L["Remove %s from the guild?"], "|c" .. ns.ClassHex(m.classFile) .. m.short .. "|r"),
-    accept = L["Remove"], danger = true,
-    onAccept = function() Uninvite(m.name) end,
+    accept = L["Remove"],
+    macro = function() return cmd .. " " .. m.name end,
   })
 end
 
 function ns.MakeLeader(m)
   if not ns.CanMakeLeader(m) then return end
-  ns.Skin.Dialog({
+  -- GuildSetLeader is protected on this client: the game's /gleader runs from a secure button
+  local cmd = _G.SLASH_GUILD_LEADER1 or "/gleader"
+  ns.SecureAsk({
     title = L["Promote to guild master"],
     text = string.format(L["Give the guild leadership to %s? You can't undo this yourself."],
       "|c" .. ns.ClassHex(m.classFile) .. m.short .. "|r"),
-    accept = L["Make leader"], danger = true,
-    onAccept = function() SetLeader(m.name) end,
+    accept = L["Make leader"],
+    macro = function() return cmd .. " " .. m.name end,
   })
 end
 
@@ -304,14 +304,14 @@ function ns.EditNote(m, officer)
   })
 end
 
-function ns.InviteToGuild(prefill)
-  if not ns.Can.invite() then return end
+-- GuildInvite is for the game's own interface alone on this server: an addon, a macro, a script,
+-- the "Add member" box opened by a script and even /ginvite are blocked or ignored. Only the game's
+-- right-click menu on a player ("Guild invite") works: the button explains it.
+function ns.InviteToGuild()
   ns.Skin.Dialog({
     title = L["Invite to guild"],
-    text = L["Name of the player to invite:"],
-    input = prefill or "", placeholder = L["Player name"],
-    accept = L["Invite"],
-    onAccept = function(name) Invite(strtrim(name)) end,
+    text = L["To invite a player, right-click their name (in the chat, on their portrait or their character) and choose \"Guild invite\". On this server, only the game's own menu can send a guild invitation: no addon can do it."],
+    accept = L["OK"],
   })
 end
 
