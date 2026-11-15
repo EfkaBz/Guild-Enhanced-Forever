@@ -69,14 +69,38 @@ local function updateLatest()
   end
 end
 
+-- messages the game hides from addons ("secret": in instances, in combat...): they can't be read,
+-- saved nor compared, but the message frame can still show them. Kept for this session only, until
+-- the server history brings a readable copy (same channel, same moment).
+local secretLines = {}
+local function secretText(e)
+  local ok, line = pcall(function()
+    local tag = e.ch == "OFFICER" and ("|cff40c040[" .. L["Officer"] .. "]|r ") or ""
+    return "|cff808080" .. date("%H:%M", e.t) .. "|r " .. tag .. "[|Hplayer:" .. e.name .. "|h" .. e.name .. "|h]: " .. e.msg
+  end)
+  return ok and line or e.msg
+end
+local function showSecret(e)
+  local r, g, b = chatColor(e.ch)
+  pcall(smf.AddMessage, smf, e.line, r, g, b)
+end
+
 local dirty = true -- history changed since the list was last drawn
 local function rebuild()
   if not smf then return end
   dirty = false
   smf:Clear()
   local h = history() or {}
+  local k = 1
   for _, e in ipairs(h) do
+    while secretLines[k] and secretLines[k].t < (e.t or 0) do
+      if visible(secretLines[k]) then showSecret(secretLines[k]) end
+      k = k + 1
+    end
     if visible(e) then smf:AddMessage(format(e)) end
+  end
+  for i = k, #secretLines do
+    if visible(secretLines[i]) then showSecret(secretLines[i]) end
   end
   smf:ScrollToBottom()
   page.none:SetShown(smf:GetNumMessages() == 0)
@@ -228,6 +252,10 @@ function ns.ChatMerge(entries, window, unreadAfter)
       if i then
         used[h[i]] = true
       else
+        -- a readable copy of a message shown hidden: it takes its place
+        for j, sl in ipairs(secretLines) do
+          if sl.ch == e.ch and math.abs(sl.t - e.t) <= 3 then table.remove(secretLines, j) break end
+        end
         e.src = "club"
         h[#h + 1] = e
         used[e] = true
@@ -260,8 +288,24 @@ local cap = CreateFrame("Frame")
 cap:RegisterEvent("CHAT_MSG_GUILD")
 cap:RegisterEvent("CHAT_MSG_OFFICER")
 cap:SetScript("OnEvent", function(_, event, msg, sender, _, _, _, _, _, _, _, _, _, guid)
-  if not ns.db or not IsInGuild() or ns.Secret(msg, sender, guid) then return end
-  add({ t = now(), ch = event == "CHAT_MSG_GUILD" and "GUILD" or "OFFICER", name = sender,
+  if not ns.db or not IsInGuild() then return end
+  local ch = event == "CHAT_MSG_GUILD" and "GUILD" or "OFFICER"
+  if ns.Secret(msg, sender) then
+    -- hidden from addons by the game: shown anyway, not saved
+    local e = { t = now(), ch = ch, name = sender, msg = msg, secret = true }
+    e.line = secretText(e)
+    secretLines[#secretLines + 1] = e
+    while #secretLines > 200 do table.remove(secretLines, 1) end
+    if page and page:IsVisible() and not dirty then
+      if visible(e) then showSecret(e); page.none:Hide(); updateLatest() end
+    else
+      dirty = true
+      setUnread(unread + 1)
+    end
+    return
+  end
+  if ns.Secret(guid) then guid = nil end
+  add({ t = now(), ch = ch, name = sender,
     class = classOf(guid), msg = msg })
 end)
 

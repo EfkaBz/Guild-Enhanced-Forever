@@ -55,7 +55,7 @@ end
 ns.ChatKnownName = known
 
 -- every message the client holds for a stream, turned into history entries
-local function collect(streamId)
+local function collectAll(streamId)
   local st = streams[streamId]
   if not st then return 0 end
   local ok, ranges = pcall(Club.GetMessageRanges, clubId, streamId)
@@ -82,6 +82,11 @@ local function collect(streamId)
   st.done = #entries >= WANT or (st.oldest and oldest and oldest.epoch == st.oldest.epoch)
   st.oldest = oldest
   return ns.ChatMerge(entries, 120, lastSeen)
+end
+-- values hidden by the game (secret) can make any read fail: that load is skipped, the next one retries
+local function collect(streamId)
+  local ok, n = pcall(collectAll, streamId)
+  return ok and n or 0
 end
 
 -- asks the server for older messages, until WANT are loaded or the history ends
