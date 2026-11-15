@@ -108,6 +108,32 @@ function ns.SetClassIcon(tex, file)
   end
 end
 
+-- my full roster name: on WoW Forever several players share a first name ("Daeler Backbi",
+-- "Daeler Smith") and UnitName gives the first name alone; found by GUID in the roster
+function ns.MyName() return ns.myName or UnitName("player") end
+-- the same author? "by" may be an old first name alone ("Daeler"), the same player when no
+-- other member shares that first name
+function ns.SameAuthor(ed, by)
+  if not ed or not by then return false end
+  if ed == by then return true end
+  local m = ns.byName[by]
+  return m ~= nil and m.name ~= by and m.name == ed and not (ns.sharedFirst and ns.sharedFirst[by])
+end
+local nameHooks = {}
+-- fn(fullName) now if known, and whenever it becomes known
+function ns.OnMyName(fn)
+  nameHooks[#nameHooks + 1] = fn
+  if ns.myName then fn(ns.myName) end
+end
+-- an old record saved under the first name alone ("Daeler"), before full names were used: hidden
+-- when that first name is shared, or when the same player already has a record under the full name
+function ns.IsOldAlias(id, coll)
+  local m = id and ns.byName[id]
+  if not m or m.name == id then return false end
+  if ns.sharedFirst and ns.sharedFirst[id] then return true end
+  return coll ~= nil and ns.Sync.Get(coll, m.name) ~= nil
+end
+
 function ns.Short(name) return name and (Ambiguate and Ambiguate(name, "guild") or name:gsub("%-.*", "")) or "" end
 
 function ns.LastOnlineText(m)
@@ -130,6 +156,7 @@ end
 function ns.ScanRoster()
   wipe(ns.members)
   wipe(ns.byName)
+  ns.sharedFirst = {}
   if not IsInGuild() then return end
   local total = GetNumGuildMembers() or 0
   local online = 0
@@ -147,16 +174,24 @@ function ns.ScanRoster()
       m.status = statusOf(m.online, status)
       m.lastHours = m.online and -1 or (((y or 0) * 365 + (mo or 0) * 30 + (d or 0)) * 24 + (h or 0))
       if m.online then online = online + 1 end
+      if guid and UnitGUID and guid == UnitGUID("player") then ns.myName = name end
       ns.members[#ns.members + 1] = m
       ns.byName[name] = m
       ns.byName[m.short] = ns.byName[m.short] or m
       -- WoW Forever: the roster shows "Daeler Backbi" (name + surname) while UnitName and the
       -- senders of addon messages give the name alone ("Daeler"): index that too
       local first = m.short:match("^(%S+)%s")
-      if first then ns.byName[first] = ns.byName[first] or m end
+      if first then
+        if ns.byName[first] and ns.byName[first] ~= m then ns.sharedFirst[first] = true end
+        ns.byName[first] = ns.byName[first] or m
+      end
     end
   end
   ns.numOnline = online
+  if ns.myName and ns.myName ~= ns.myNameSent then
+    ns.myNameSent = ns.myName
+    for _, fn in ipairs(nameHooks) do pcall(fn, ns.myName) end
+  end
 end
 
 -- asks the server for a fresh roster (it answers with GUILD_ROSTER_UPDATE; throttled server side)
@@ -206,7 +241,11 @@ ns.Can = {
   leader = function() return IsGuildLeader and IsGuildLeader() and true or false end,
 }
 
-local function isMe(m) return m and (m.name == UnitName("player") or m.short == UnitName("player")) end
+local function isMe(m)
+  if not m then return false end
+  if ns.myName then return m.name == ns.myName end
+  return m.name == UnitName("player") or m.short == UnitName("player")
+end
 ns.IsMe = isMe
 
 function ns.CanPromote(m)
@@ -501,6 +540,8 @@ SlashCmdList.GUILDENHANCEDFOREVER = function(msg)
     else
       ns.Print("/gui scale 0.6 - 1.6")
     end
+  elseif msg == "net" and ns.Net then
+    ns.Net.Debug()
   elseif msg == "prof" and ns.ProfDebug then
     ns.ProfDebug()
   elseif msg == "help" then

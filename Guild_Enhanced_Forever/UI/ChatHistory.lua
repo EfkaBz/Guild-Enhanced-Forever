@@ -25,6 +25,7 @@ local function classFileOf(classID)
 end
 
 local function streamChannel(s)
+  if ns.Secret(s.streamType, s.streamId) then return nil end -- hidden by the game: unusable
   local T = Enum and Enum.ClubStreamType
   if T then
     if s.streamType == T.Guild then return "GUILD" end
@@ -34,6 +35,25 @@ local function streamChannel(s)
   return s.streamType == 1 and "GUILD" or s.streamType == 2 and "OFFICER" or nil
 end
 
+-- the author's name; the server history gives "Unknown" while the game has not loaded that
+-- member yet: then the GUID or the club member info may know it. nil when nobody knows.
+local function known(name)
+  return type(name) == "string" and not ns.Secret(name) and name ~= "" and name ~= (UNKNOWNOBJECT or "Unknown") and name or nil
+end
+local function authorName(a)
+  local name = known(a.name)
+  if name then return name end
+  if a.guid and not ns.Secret(a.guid) and GetPlayerInfoByGUID then
+    local ok, _, _, _, _, _, n, realm = pcall(GetPlayerInfoByGUID, a.guid)
+    if ok and known(n) then return (realm and realm ~= "") and (n .. "-" .. realm) or n end
+  end
+  if a.memberId and not ns.Secret(a.memberId) and Club.GetMemberInfo then
+    local ok, info = pcall(Club.GetMemberInfo, clubId, a.memberId)
+    if ok and info then return known(info.name) end
+  end
+end
+ns.ChatKnownName = known
+
 -- every message the client holds for a stream, turned into history entries
 local function collect(streamId)
   local st = streams[streamId]
@@ -42,14 +62,16 @@ local function collect(streamId)
   if not ok or not ranges then return 0 end
   local entries, oldest = {}, nil
   for _, r in ipairs(ranges) do
+    if ns.Secret(r.oldestMessageId, r.newestMessageId) then break end
     local ok2, msgs = pcall(Club.GetMessagesInRange, clubId, streamId, r.oldestMessageId, r.newestMessageId)
     if ok2 and msgs then
       for _, m in ipairs(msgs) do
-        if not ns.Secret(m.content, m.author and m.author.name) and not m.destroyed and m.content
-          and m.content ~= "" and m.author then
+        if not ns.Secret(m.content, m.author and m.author.name, m.messageId and m.messageId.epoch, m.destroyed)
+          and not m.destroyed and m.content
+          and m.content ~= "" and m.author and authorName(m.author) then
           entries[#entries + 1] = {
             t = math.floor((m.messageId.epoch or 0) / 1000000), -- microseconds
-            ch = st.ch, name = m.author.name, class = classFileOf(m.author.classID), msg = m.content,
+            ch = st.ch, name = authorName(m.author), class = classFileOf(m.author.classID), msg = m.content,
           }
           if not oldest or (m.messageId.epoch or 0) < (oldest.epoch or 0) then oldest = m.messageId end
         end
@@ -72,7 +94,7 @@ end
 function ns.LoadServerHistory()
   if not (Club and Club.GetGuildClubId) or not IsInGuild() then return end
   clubId = Club.GetGuildClubId()
-  if not clubId then return end
+  if not clubId or ns.Secret(clubId) then clubId = nil return end
   local ok, list = pcall(Club.GetStreams, clubId)
   if not ok or not list then return end
   for _, s in ipairs(list) do
@@ -103,6 +125,7 @@ end
 
 local started
 ev:SetScript("OnEvent", function(_, event, cid, streamId)
+  if ns.Secret(cid, streamId) then return end
   if event == "PLAYER_ENTERING_WORLD" then
     if started then return end
     started = true

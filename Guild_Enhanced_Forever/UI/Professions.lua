@@ -16,6 +16,7 @@ local page, ui = nil, { rows = {}, recipes = {}, reqs = {}, profRows = {} }
 local mode, search, profSel, selected = "dir", "", nil, nil
 local profPicked -- the player clicked a profession (else: the first one someone has)
 local me = UnitName("player")
+ns.OnMyName(function(n) me = n end) -- full roster name once known
 
 -- the professions: key -> spell (its name is the profession, in the client's language)
 local PROFS = {
@@ -26,6 +27,8 @@ local PROFS = {
   { "fish", 7620, "Trade_Fishing" },
 }
 local PROF, byLocalName = {}, {}
+-- other spells that open a profession window under another name (Smelting = Mining)
+local ALIAS = { { 2656, "mine" } }
 for _, p in ipairs(PROFS) do
   local name = ns.SpellInfo(p[2])
   p.name = name or p[1]
@@ -40,6 +43,10 @@ local function ensureNames()
       local name = ns.SpellInfo(p[2])
       if name then p.name = name; byLocalName[name] = p[1] end
     end
+  end
+  for _, a in ipairs(ALIAS) do
+    local name = ns.SpellInfo(a[1])
+    if name and not byLocalName[name] then byLocalName[name] = a[2] end
   end
 end
 local function profName(key) return PROF[key] and PROF[key].name or key end
@@ -201,6 +208,31 @@ function ns.ProfDebug()
     .. ", GetNumSkillLines " .. tostring(GetNumSkillLines and GetNumSkillLines())
     .. ", C_TradeSkillUI " .. tostring(C_TradeSkillUI and C_TradeSkillUI.GetBaseProfessionInfo and true))
   readSkills()
+  local T = C_TradeSkillUI
+  if T and T.GetBaseProfessionInfo then
+    local ok, info = pcall(T.GetBaseProfessionInfo)
+    if ok and type(info) == "table" then
+      say("window: id " .. tostring(info.professionID) .. " '" .. tostring(info.professionName) .. "', parent "
+        .. tostring(info.parentProfessionID) .. " '" .. tostring(info.parentProfessionName) .. "', "
+        .. tostring(info.skillLevel) .. "/" .. tostring(info.maxSkillLevel))
+      local key = SKILL[info.professionID or 0] or SKILL[info.parentProfessionID or 0]
+        or byLocalName[info.parentProfessionName or ""] or byLocalName[info.professionName or ""]
+      local ids = T.GetAllRecipeIDs and T.GetAllRecipeIDs() or {}
+      local learned, first = 0, nil
+      for _, id in ipairs(ids) do
+        local rok, r = pcall(T.GetRecipeInfo, id)
+        if rok and type(r) == "table" and r.learned then
+          learned = learned + 1
+          first = first or (tostring(id) .. " " .. tostring(T.GetRecipeItemLink and T.GetRecipeItemLink(id)))
+        end
+      end
+      say("  key " .. tostring(key) .. ", recipes " .. #ids .. ", learned " .. learned
+        .. ", linked " .. tostring(T.IsTradeSkillLinked and T.IsTradeSkillLinked())
+        .. ", npc " .. tostring(T.IsNPCCrafting and T.IsNPCCrafting()) .. (first and (", first " .. first) or ""))
+    else
+      say("window: none open")
+    end
+  end
   readTradeSkill()
   for key, p in pairs(myProfs) do say(profName(key) .. " " .. tostring(p.r) .. "/" .. tostring(p.m) .. ", " .. #(p.rc or {}) .. " recipes") end
   if not next(myProfs) and C_SkillInfo and C_SkillInfo.GetSkillLineInfo then
@@ -286,7 +318,7 @@ end)
 local function entries()
   local list = {}
   for _, rec in ipairs(Sync.All("prof")) do
-    if ns.byName[rec.id] then
+    if ns.byName[rec.id] and not ns.IsOldAlias(rec.id, "prof") then
       for _, p in ipairs(rec.p or {}) do
         local codes = {}
         for c in (p.rc or ""):gmatch("[^,]+") do codes[#codes + 1] = c end
@@ -458,6 +490,20 @@ local function setState(rec, st)
   Sync.Put("craft", copy)
 end
 
+-- a request for me: sent to me by name, or sent to anyone for a recipe I know
+local function forMe(rec)
+  if rec.to == me then return true end
+  if rec.to and rec.to ~= "" then
+    -- older versions used the first name alone ("Daeler"): mine unless another member shares it
+    return rec.to == UnitName("player") and not (ns.sharedFirst and ns.sharedFirst[rec.to])
+  end
+  if not rec.code or rec.by == me then return false end
+  for _, p in pairs(myProfs) do
+    for _, c in ipairs(p.rc or {}) do if c == rec.code then return true end end
+  end
+  return false
+end
+
 Sync.Register("craft", {
   keep = 7 * 86400,
   expired = function(r, t)
@@ -469,7 +515,7 @@ Sync.Register("craft", {
     if rec.del or not Sync.Started() or rec.ed == me or not ns.NotifyOpt("crafts") then return end
     local icon = rec.code and select(3, recipeInfo(rec.code)) or "Interface\\Icons\\Trade_BlackSmithing"
     local function go() mode = "req"; ns.OpenPage(PAGE) end
-    if not old and rec.to == me then
+    if not old and rec.st == "open" and forMe(rec) then
       ns.Notify({ icon = icon, title = L["Craft request"], text = string.format(L["%s asks you: %d x %s"],
         nameLabel(rec.by), rec.qty or 1, rec.what or ""), buttons = { { L["View"], go, true } } })
     elseif old and rec.by == me and old.st ~= rec.st and (rec.st == "taken" or rec.st == "done") then
@@ -511,7 +557,9 @@ local function reqRow(i)
 end
 
 local function refreshRequests(animate)
-  local list = Sync.All("craft")
+  -- finished requests leave the list (the record stays a few days: the asker is told it is done)
+  local list = {}
+  for _, rec in ipairs(Sync.All("craft")) do if rec.st ~= "done" then list[#list + 1] = rec end end
   table.sort(list, function(a, b)
     local order = { open = 1, taken = 2, done = 3 }
     if a.st ~= b.st then return (order[a.st] or 9) < (order[b.st] or 9) end
@@ -563,8 +611,9 @@ function ns.RefreshProfessions(animate)
   ui.dir:SetShown(mode == "dir")
   ui.req:SetShown(mode == "req")
   local open = refreshRequests(animate and mode == "req")
-  ui.pills[2].text:SetText(L["Craft requests"] .. (open > 0 and ("  |cffffd100" .. open .. "|r") or ""))
-  ui.pills[2]:SetWidth(ui.pills[2].text:GetStringWidth() + 20)
+  ui.pills[2]:SetLabel(L["Craft requests"] .. (open > 0 and ("  |cffffd100" .. open .. "|r") or ""))
+  ui.pills[1]:SetPoint("TOPLEFT", 0, 0)
+  ui.pills[2]:SetPoint("TOPLEFT", ui.pills[1]:GetWidth() + 6, 0)
   ns.SetTabBadge(PAGE, "")
   if mode ~= "dir" then return end
 
@@ -675,15 +724,16 @@ local function build(p)
   page = p
   ui.pills = {}
   local x = 0
-  for i, spec in ipairs({ { "dir", L["Directory"] }, { "req", L["Craft requests"] } }) do
-    local pill = S.Pill(p, spec[2], function() mode = spec[1]; ns.RefreshProfessions(true) end)
+  for i, spec in ipairs({ { "dir", L["Directory"], { "Interface\\Icons\\INV_Misc_Book_09", "Interface\\Icons\\INV_Misc_Book_11" } },
+      { "req", L["Craft requests"], { "Interface\\Icons\\Trade_BlackSmithing", "Interface\\Icons\\INV_Hammer_20" } } }) do
+    local pill = S.ModeTab(p, spec[2], spec[3], function() mode = spec[1]; ns.RefreshProfessions(true) end)
     pill.key = spec[1]
     pill:SetPoint("TOPLEFT", x, 0)
     x = x + pill:GetWidth() + 6
     ui.pills[i] = pill
   end
   ui.newReq = S.Button(p, L["New request"], 140, 22, function() ns.CraftRequest() end, "primary")
-  ui.newReq:SetPoint("TOPRIGHT")
+  ui.newReq:SetPoint("TOPRIGHT", 0, -4)
   ui.search = S.EditBox(p, 220, 22, L["Search a recipe or a name"])
   ui.search:SetPoint("RIGHT", ui.newReq, "LEFT", -8, 0)
   local pendingSearch
@@ -696,7 +746,7 @@ local function build(p)
 
   -- directory
   local dir = CreateFrame("Frame", nil, p)
-  dir:SetPoint("TOPLEFT", 0, -32)
+  dir:SetPoint("TOPLEFT", 0, -40)
   dir:SetPoint("BOTTOMRIGHT")
   ui.dir = dir
   -- 1. the professions
@@ -755,7 +805,7 @@ local function build(p)
 
   -- requests
   local req = CreateFrame("Frame", nil, p)
-  req:SetPoint("TOPLEFT", 0, -32)
+  req:SetPoint("TOPLEFT", 0, -40)
   req:SetPoint("BOTTOMRIGHT")
   S.Card(req, 8)
   ui.req = req
@@ -789,7 +839,7 @@ end
 ns.On("SYNC_PROF", later)
 ns.On("SYNC_CRAFT", function(rec)
   later()
-  if rec and not rec.del and rec.to == me and rec.st == "open" and not (page and page:IsVisible()) then
+  if rec and not rec.del and rec.st == "open" and forMe(rec) and not (page and page:IsVisible()) then
     ns.SetTabBadge(PAGE, "!")
   end
 end)

@@ -25,6 +25,7 @@ function ns.RegisterGame(def)
 end
 
 local me = UnitName("player")
+ns.OnMyName(function(n) me = n end) -- full roster name once known
 local function short(name) return name and name:gsub("%-.*", "") or "" end
 
 -- Network ----------------------------------------------------------------------------------------

@@ -10,6 +10,7 @@ local C, color, gradient = S.C, S.Color, S.Gradient
 local Sync = ns.Sync
 local now = GetServerTime or time
 local me = UnitName("player")
+ns.OnMyName(function(n) me = n end) -- full roster name once known
 
 local function nameLabel(name)
   local m = name and ns.byName[name]
@@ -48,7 +49,7 @@ local lb = { rows = {}, game = "all" }
 local function standings(game)
   local list = {}
   for _, rec in ipairs(Sync.All("gstats")) do
-    if ns.byName[rec.id] then
+    if ns.byName[rec.id] and not ns.IsOldAlias(rec.id, "gstats") then
       local w, l, d = 0, 0, 0
       for g, r in pairs(rec.s or {}) do
         if game == "all" or g == game then w, l, d = w + (r[1] or 0), l + (r[2] or 0), d + (r[3] or 0) end

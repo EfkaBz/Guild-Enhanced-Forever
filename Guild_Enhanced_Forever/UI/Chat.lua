@@ -180,8 +180,10 @@ end
 -- once per session: drops the protected strings of past sessions (no longer readable; the server
 -- history brings them back with fresh ones), then the copies saved twice
 cleanHistory = function(h)
+  local unknown = UNKNOWNOBJECT or "Unknown"
   for i = #h, 1, -1 do
-    if protected(h[i]) then table.remove(h, i) end
+    local e = h[i]
+    if protected(e) or not e.name or e.name == "" or e.name == unknown then table.remove(h, i) end
   end
   dedupe(h)
 end

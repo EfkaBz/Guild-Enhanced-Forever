@@ -9,6 +9,7 @@ local Sync = ns.Sync
 local PAGE = 3
 local page, ui = nil, { cards = {} }
 local me = UnitName("player")
+ns.OnMyName(function(n) me = n end) -- full roster name once known
 
 local CATS = {
   { "info", "Information", { "Interface\\Icons\\INV_Misc_Note_01" }, C.gold },

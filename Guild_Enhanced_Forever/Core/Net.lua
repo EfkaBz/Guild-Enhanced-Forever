@@ -97,10 +97,19 @@ end
 -- Throttled queue -----------------------------------------------------------------------------------
 local queues = { {}, {} } -- 1 urgent, 2 bulk
 local tokens, MAX_TOKENS, RATE = 6, 6, 1.2
+-- chat lockdown: the game locks addon messages in some situations (instances, encounters, PvP):
+-- what we receive is hidden and what we send is dropped. Messages wait in the queue meanwhile and
+-- leave as soon as it ends; then we ask the guild for what we missed (see "Lockdown" below).
+local function locked()
+  return CI.InChatMessagingLockdown and CI.InChatMessagingLockdown() and true or false
+end
+Net.Locked = locked
+
 local pump = CreateFrame("Frame")
 pump:Hide()
 pump:SetScript("OnUpdate", function(self, e)
   tokens = math.min(MAX_TOKENS, tokens + e * RATE)
+  if locked() then return end -- kept for later
   while tokens >= 1 do
     local q = queues[1][1] and queues[1] or queues[2][1] and queues[2]
     if not q then break end
@@ -131,6 +140,7 @@ local function cut(s, size)
 end
 
 local msgCounter = math.random(1, 9999)
+local sentIds = {} -- ids of our own messages (the guild channel sends them back to us)
 
 -- kind: short tag; data: any value; channel "GUILD" or "WHISPER" (target); bulk: lower priority;
 -- cancel(): checked right before each piece leaves (true = not sent)
@@ -139,6 +149,7 @@ function Net.Send(kind, data, channel, target, bulk, cancel)
   if channel == "GUILD" and not IsInGuild() then return end
   local payload = Net.Encode(data):gsub("\n", "\29")
   msgCounter = (msgCounter % 99999) + 1
+  sentIds[msgCounter] = GetTime()
   local parts = cut(payload, CHUNK)
   local q = queues[bulk and 2 or 1]
   for i, p in ipairs(parts) do
@@ -155,18 +166,40 @@ function Net.On(kind, fn)
 end
 
 local buffers = {} -- sender .. id -> { parts, n, t }
+-- last messages seen (/gui net)
+local netLog = {}
+function Net.Log(sender, kind, what)
+  table.insert(netLog, string.format("%s %s %s: %s", date("%H:%M:%S"), tostring(sender), tostring(kind), tostring(what)))
+  if #netLog > 30 then table.remove(netLog, 1) end
+end
+function Net.Debug()
+  ns.Print("me " .. tostring(UnitName("player")) .. ", full name " .. tostring(ns.MyName()) .. ", sync " .. tostring(ns.Sync.Started())
+    .. ", chat lockdown " .. tostring(locked()) .. ", waiting " .. (#queues[1] + #queues[2]))
+  if #netLog == 0 then ns.Print("nothing received yet") end
+  for _, l in ipairs(netLog) do ns.Print(l) end
+end
 local me = UnitName("player")
 
+local hidden = 0 -- messages the game hid from us
 local ev = CreateFrame("Frame")
 ev:RegisterEvent("CHAT_MSG_ADDON")
 ev:SetScript("OnEvent", function(_, _, prefix, text, channel, sender)
-  if ns.Secret(prefix, text, channel, sender) then return end
+  if ns.Secret(prefix, text, channel, sender) then
+    -- chat lockdown: unreadable, caught up when it ends (see "Lockdown" below)
+    hidden = hidden + 1
+    Net.MissedSince()
+    if hidden == 1 or hidden % 20 == 0 then Net.Log("?", "?", "hidden by the game (chat lockdown): " .. hidden) end
+    return
+  end
   if prefix ~= PREFIX or not text or not sender then return end
   local name = ns.Short(sender)
-  if name == me then return end
-  if not ns.byName[name] then return end -- guildmates only
+  if not ns.byName[name] then Net.Log(sender, text:match("^[^\31]+"), "not in guild") return end
   local kind, id, i, n, piece = text:match("^([^\31]+)\31(%d+)\31(%d+)\31(%d+)\31(.*)$")
   if not kind then return end
+  -- our own message coming back (the sender is "Name Surname" or "Name"; another player can
+  -- share our first name: check the id too)
+  if (name == ns.MyName() or name == me) and sentIds[tonumber(id)] then return end
+  if i == "1" then Net.Log(sender, kind, "received " .. id .. " (" .. n .. " pieces)") end
   i, n = tonumber(i), tonumber(n)
   local key = name .. "\31" .. id
   local buf = buffers[key]
@@ -192,6 +225,7 @@ end)
 C_Timer.NewTicker(30, function()
   local t = GetTime()
   for k, b in pairs(buffers) do if t - b.t > 60 then buffers[k] = nil end end
+  for k, st in pairs(sentIds) do if t - st > 120 then sentIds[k] = nil end end
 end)
 
 -- Shared records ------------------------------------------------------------------------------------
@@ -225,7 +259,7 @@ function Sync.RankOf(name)
 end
 -- officers: the guild master and the rank right under
 function Sync.IsOfficer(name) return Sync.RankOf(name) <= 1 end
-function Sync.Me() return me end
+function Sync.Me() return ns.MyName() end
 function Sync.Started() return started end
 
 function Sync.Get(coll, id)
@@ -249,7 +283,11 @@ local function apply(coll, rec, fromNet, sender)
   if not s then return false end
   local old = s[rec.id]
   if old and old.v >= rec.v then return false end
-  if fromNet and opts.validate and not opts.validate(rec, old, sender) then return false end
+  if fromNet and opts.validate and not opts.validate(rec, old, sender) then
+    Net.Log(sender, coll, "refused " .. rec.id .. " by " .. tostring(rec.ed))
+    return false
+  end
+  if fromNet then Net.Log(sender, coll, "kept " .. rec.id) end
   rec.t = now() -- when this copy changed here (what the login question compares)
   s[rec.id] = rec
   if opts.changed then
@@ -267,8 +305,8 @@ function Sync.Put(coll, rec)
   local old = s[rec.id]
   local opts = colls[coll] or {}
   rec.v = opts.version and opts.version(rec) or math.max(now(), old and (old.v + 1) or 0)
-  rec.by = rec.by or me
-  rec.ed = me -- who made this change
+  rec.by = rec.by or ns.MyName()
+  rec.ed = ns.MyName() -- who made this change (full name)
   apply(coll, rec, false)
   Net.Send("P", { c = coll, r = rec }, "GUILD")
   return rec
@@ -361,8 +399,44 @@ sev:RegisterEvent("PLAYER_GUILD_UPDATE")
 sev:RegisterEvent("PLAYER_LOGOUT")
 sev:SetScript("OnEvent", function(_, event)
   if event == "PLAYER_LOGOUT" then markSeen() return end
+  if started then return end
   -- the roster must be known first (guildmates only)
   C_Timer.After(12, function()
     if #ns.members == 0 then ns.RequestRoster(); C_Timer.After(8, Sync.Start) else Sync.Start() end
   end)
+end)
+
+-- Lockdown -------------------------------------------------------------------------------------------
+-- while the game locks addon messages nothing can be read or sent (no addon can get around it).
+-- When it ends: the waiting messages leave (queue above) and we ask the guild for every record
+-- changed meanwhile, so the shared data is complete again a few seconds later.
+local missedSince, lastAsk = nil, 0
+function Net.MissedSince()
+  missedSince = missedSince or now()
+end
+
+local function catchUp()
+  if not missedSince or not started or locked() then return end
+  if GetTime() - lastAsk < 30 then return end
+  lastAsk = GetTime()
+  local since = missedSince
+  missedSince = nil
+  Net.Send("Q", { since = math.max(0, since - 120) }, "GUILD")
+  Net.Log("me", "Q", "lockdown over, asking for what was missed")
+  if pump then pump:Show() end
+end
+
+local lev = CreateFrame("Frame")
+lev:RegisterEvent("PLAYER_ENTERING_WORLD")
+lev:RegisterEvent("PLAYER_REGEN_ENABLED")
+if C_EventUtils == nil or not C_EventUtils.IsEventValid or C_EventUtils.IsEventValid("ADDON_RESTRICTION_STATE_CHANGED") then
+  pcall(lev.RegisterEvent, lev, "ADDON_RESTRICTION_STATE_CHANGED")
+end
+lev:SetScript("OnEvent", function()
+  if locked() then Net.MissedSince() end
+  C_Timer.After(2, catchUp)
+end)
+-- events can be missed: a light check every few seconds
+C_Timer.NewTicker(5, function()
+  if locked() then Net.MissedSince() else catchUp() end
 end)

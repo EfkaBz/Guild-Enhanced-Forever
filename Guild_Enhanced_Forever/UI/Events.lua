@@ -100,12 +100,17 @@ local function nameLabel(name)
 end
 
 -- Data ------------------------------------------------------------------------------------------------------
-local me = UnitName("player")
-local function canEdit(ev) return ev and (ev.by == me or Sync.IsOfficer(me)) end
+-- me: my full roster name ("Daeler Backbi"), so two players sharing a first name stay apart
+local joinBlock -- (below)
+local function isMine(name) return ns.SameAuthor(ns.MyName(), name) end
+local function canEdit(ev) return ev and (isMine(ev.by) or Sync.IsOfficer(ns.MyName())) end
 
 local function signups(evId)
   local list = {}
-  for _, r in ipairs(Sync.All("rsvp")) do if r.ev == evId then list[#list + 1] = r end end
+  for _, r in ipairs(Sync.All("rsvp")) do
+    -- old answers saved under a first name alone are ambiguous when two members share it
+    if r.ev == evId and not (ns.sharedFirst and ns.sharedFirst[r.who or ""]) then list[#list + 1] = r end
+  end
   table.sort(list, function(a, b) return (a.at or 0) < (b.at or 0) end)
   return list
 end
@@ -127,12 +132,12 @@ local function sortSignups(ev)
   return res
 end
 
-local function myAnswer(evId) return Sync.Get("rsvp", evId .. "@" .. me) end
+local function myAnswer(evId) return Sync.Get("rsvp", evId .. "@" .. ns.MyName()) end
 
 local function answer(ev, st)
   local old = myAnswer(ev.id)
   local _, cls = UnitClass("player")
-  Sync.Put("rsvp", { id = ev.id .. "@" .. me, ev = ev.id, who = me, st = st, role = ns.MyRole(), cls = cls,
+  Sync.Put("rsvp", { id = ev.id .. "@" .. ns.MyName(), ev = ev.id, who = ns.MyName(), st = st, role = ns.MyRole(), cls = cls,
     lvl = UnitLevel("player"),
     -- the place in the waiting list is kept unless you were not "present" before
     at = (old and old.st == "yes" and st == "yes") and old.at or now() })
@@ -152,10 +157,10 @@ Sync.Register("events", {
   expired = function(r, t) return type(r.t) == "number" and r.t < t - 3 * 86400 end,
   validate = function(rec, old)
     if not old then return ns.byName[rec.ed or rec.by] ~= nil end
-    return rec.ed == old.by or Sync.IsOfficer(rec.ed)
+    return ns.SameAuthor(rec.ed, old.by) or Sync.IsOfficer(rec.ed)
   end,
   changed = function(rec, old)
-    if not old and not rec.del and rec.by ~= me and type(rec.t) == "number" and rec.t > now()
+    if not old and not rec.del and not isMine(rec.by) and type(rec.t) == "number" and rec.t > now()
       and ns.NotifyOpt("events") and Sync.Started() then
       local k = KIND[rec.kind] or KIND.other
       ns.Notify({ icon = k[3], title = L["New event"],
@@ -172,24 +177,37 @@ Sync.Register("rsvp", {
 Sync.Register("lfg", {
   keep = 86400,
   expired = function(r, t) return (r.exp or 0) < t - 3600 end,
-  validate = function(rec, old) return (not old) or rec.ed == old.by or Sync.IsOfficer(rec.ed) end,
+  validate = function(rec, old) return (not old) or ns.SameAuthor(rec.ed, old.by) or Sync.IsOfficer(rec.ed) end,
   changed = function(rec, old)
-    if not old and not rec.del and rec.by ~= me and (rec.exp or 0) > now() and ns.NotifyOpt("lfg")
+    if not old and not rec.del and not isMine(rec.by) and (rec.exp or 0) > now() and ns.NotifyOpt("lfg")
       and Sync.Started() then
       ns.Notify({ icon = { "Interface\\Icons\\INV_Misc_GroupNeedMore", "Interface\\Icons\\INV_Misc_Note_06" },
         title = L["Group search"],
         text = string.format("%s: %s", nameLabel(rec.by), rec.what or ""),
-        buttons = { { L["Join"], function() ns.LfgJoin(rec) end, true },
+        buttons = joinBlock(rec) and { { L["View"], function() mode = "lfg"; ns.OpenPage(PAGE) end, true } }
+          or { { L["Join"], function() ns.LfgJoin(rec) end, true },
           { L["View"], function() mode = "lfg"; ns.OpenPage(PAGE) end } } })
     end
   end,
 })
 
 -- Group finder: join requests (whispered to the poster) --------------------------------------------------------
+-- why I cannot ask to join (a short text), or nil when I can
+joinBlock = function(rec)
+  if rec.asked then return L["Request sent"] end
+  if UnitLevel("player") < (rec.lvl or 1) then
+    local t = string.format(L["level %d+"], rec.lvl or 1)
+    return (t:gsub("^%l", string.upper))
+  end
+  local m = ns.byName[rec.by]
+  if not (m and m.online) then return L["Offline"] end
+end
+
 function ns.LfgJoin(rec)
-  if not rec or rec.by == me then return end
+  if not rec or isMine(rec.by) or joinBlock(rec) then return end
   local _, cls = UnitClass("player")
-  Net.Send("LJ", { id = rec.id, role = ns.MyRole(), cls = cls, lvl = UnitLevel("player") }, "WHISPER", rec.by)
+  Net.Send("LJ", { id = rec.id, who = ns.MyName(), role = ns.MyRole(), cls = cls, lvl = UnitLevel("player") },
+    "WHISPER", rec.by)
   rec.asked = true
   ns.Print(string.format(L["Request sent to %s."], rec.by))
   if page and page:IsVisible() then ns.RefreshEvents() end
@@ -198,7 +216,9 @@ end
 Net.On("LJ", function(d, sender)
   if type(d) ~= "table" then return end
   local rec = Sync.Get("lfg", tostring(d.id))
-  if not rec or rec.by ~= me then return end
+  if not rec or not isMine(rec.by) then return end
+  -- the full name sent along tells apart two players sharing a first name
+  if type(d.who) == "string" and ns.byName[d.who] and ns.Short(d.who):match("^%S+") == sender then sender = d.who end
   requests[rec.id] = requests[rec.id] or {}
   for _, q in ipairs(requests[rec.id]) do if q.name == sender then return end end
   local role = ROLE[d.role] and d.role or "dps"
@@ -257,7 +277,7 @@ local function editEvent(ev)
       local base = date("*t", dayStart(time()) + v.day * 86400 + 3 * 3600)
       base.hour, base.min, base.sec = v.hour, v.min, 0
       local when = time(base)
-      local rec = ev and CopyTable(ev) or { id = me .. "-" .. now() .. "-" .. math.random(99) }
+      local rec = ev and CopyTable(ev) or { id = ns.MyName() .. "-" .. now() .. "-" .. math.random(99) }
       rec.title, rec.kind, rec.t, rec.size, rec.notes = v.title, v.kind, when, v.size, v.notes
       rec.place = v.other ~= "" and v.other or v.preset
       rec.del = nil
@@ -283,7 +303,7 @@ local function postSearch()
         options = { { 30, "30 min" }, { 60, "1 h" }, { 120, "2 h" } } },
     },
     onAccept = function(v)
-      local rec = { id = me .. "-" .. now(), what = v.what, nt = v.tank, nh = v.heal, nd = v.dps,
+      local rec = { id = ns.MyName() .. "-" .. now(), what = v.what, nt = v.tank, nh = v.heal, nd = v.dps,
         lvl = v.lvl or 1, exp = now() + v.dur * 60 }
       Sync.Put("lfg", rec)
       mode = "lfg"
@@ -426,12 +446,12 @@ local function refreshDetail(ev)
     b.text:SetTextColor(color(on and C.gold or C.text))
   end
   local waiting
-  for pos, r in ipairs(s.wait) do if r.who == me then waiting = pos end end
+  for pos, r in ipairs(s.wait) do if isMine(r.who) then waiting = pos end end
   d.myState:SetText(waiting and string.format(L["Waiting list: position %d"], waiting) or "")
   d.role:Refresh()
   d.edit:SetShown(canEdit(ev))
   d.delete:SetShown(canEdit(ev))
-  d.inviteAll:SetShown(ev.by == me or Sync.IsOfficer(me))
+  d.inviteAll:SetShown(isMine(ev.by) or Sync.IsOfficer(ns.MyName()))
   fillPeople({
     { title = L["Present"], list = s.yes }, { title = L["Waiting list"], list = s.wait },
     { title = L["Maybe"], list = s.maybe }, { title = L["Absent"], list = s.no },
@@ -444,7 +464,7 @@ local function inviteAll(ev)
   local n = 0
   for _, r in ipairs(s.yes) do
     local m = ns.byName[r.who]
-    if m and m.online and r.who ~= me and not UnitInParty(r.who) and not UnitInRaid(r.who) then
+    if m and m.online and not ns.IsMe(m) and not UnitInParty(m.name) and not UnitInRaid(m.name) then
       if n >= 4 and not IsInRaid() and ConvertToRaid then ConvertToRaid() end
       ns.GroupInvite(m)
       n = n + 1
@@ -490,6 +510,8 @@ local function lfgRow(i)
   r.left:SetJustifyH("RIGHT")
   r.btn = S.Button(r, "", 110, 24)
   r.btn:SetPoint("RIGHT", -10, 0)
+  r.cancel = S.Button(r, L["Cancel"], 80, 24)
+  r.cancel:SetPoint("RIGHT", r.btn, "LEFT", -6, 0)
   ui.lfgRows[i] = r
   return r
 end
@@ -508,10 +530,25 @@ local function refreshLfg(animate)
     r.needs.heal.text:SetText(rec.nh or 0)
     r.needs.dps.text:SetText(rec.nd or 0)
     r.left:SetText(string.format(L["%d min left"], math.max(0, math.ceil((rec.exp - t) / 60))))
-    if rec.by == me then
+    local mine = isMine(rec.by)
+    r.cancel:SetShown(mine)
+    r.left:ClearAllPoints()
+    r.left:SetPoint("RIGHT", mine and -218 or -132, 0)
+    for k, role in ipairs({ "tank", "heal", "dps" }) do
+      r.needs[role]:ClearAllPoints()
+      r.needs[role]:SetPoint("RIGHT", (mine and -396 or -310) + (k - 1) * 48, 0)
+    end
+    r.what:SetPoint("RIGHT", mine and -416 or -330, 0)
+    r.who:SetPoint("RIGHT", mine and -416 or -330, 0)
+    if mine then
+      r.cancel:SetScript("OnClick", function()
+        Sync.Delete("lfg", rec.id)
+        requests[rec.id] = nil
+        ns.RefreshEvents()
+      end)
       local q = requests[rec.id] or {}
-      r.btn:SetText(#q > 0 and string.format(L["Requests (%d)"], #q) or L["Close"])
-      r.btn:SetEnabled(true)
+      r.btn:SetText(string.format(L["Requests (%d)"], #q))
+      r.btn:SetEnabled(#q > 0)
       r.btn:SetScript("OnClick", function(self)
         local items = { { text = rec.what, title = true } }
         for _, p in ipairs(q) do
@@ -528,9 +565,10 @@ local function refreshLfg(animate)
         S.OpenMenu(self, items, { width = 240 })
       end)
     else
-      local low = UnitLevel("player") < (rec.lvl or 1)
-      r.btn:SetText(rec.asked and L["Request sent"] or L["Join"])
-      r.btn:SetEnabled(not rec.asked and not low and (m and m.online or false))
+      -- the button says why it cannot be used (same rules as the notification)
+      local why = joinBlock(rec)
+      r.btn:SetText(why or L["Join"])
+      r.btn:SetEnabled(why == nil)
       r.btn:SetScript("OnClick", function() ns.LfgJoin(rec) end)
     end
     r:Show()
@@ -551,8 +589,9 @@ function ns.RefreshEvents(animate)
   ui.new:SetText(mode == "cal" and L["New event"] or L["Post a search"])
   ui.myRole:Refresh()
   local nLfg = refreshLfg(animate and mode == "lfg")
-  ui.pills[2].text:SetText(L["Group finder"] .. (nLfg > 0 and ("  |cffffd100" .. nLfg .. "|r") or ""))
-  ui.pills[2]:SetWidth(ui.pills[2].text:GetStringWidth() + 20)
+  ui.pills[2]:SetLabel(L["Group finder"] .. (nLfg > 0 and ("  |cffffd100" .. nLfg .. "|r") or ""))
+  ui.pills[1]:SetPoint("TOPLEFT", 0, 0)
+  ui.pills[2]:SetPoint("TOPLEFT", ui.pills[1]:GetWidth() + 6, 0)
   if mode ~= "cal" then return end
   local list = upcoming()
   local found
@@ -593,8 +632,9 @@ local function build(p)
   page = p
   ui.pills = {}
   local x = 0
-  for i, spec in ipairs({ { "cal", L["Calendar"] }, { "lfg", L["Group finder"] } }) do
-    local pill = S.Pill(p, spec[2], function()
+  for i, spec in ipairs({ { "cal", L["Calendar"], { "Interface\\Icons\\INV_Misc_PocketWatch_01", "Interface\\Icons\\INV_Misc_Note_01" } },
+      { "lfg", L["Group finder"], { "Interface\\Icons\\INV_Misc_GroupNeedMore", "Interface\\Icons\\INV_Misc_GroupLooking", "Interface\\Icons\\Ability_Warrior_BattleShout" } } }) do
+    local pill = S.ModeTab(p, spec[2], spec[3], function()
       mode = spec[1]
       ns.RefreshEvents(true)
     end)
@@ -604,7 +644,7 @@ local function build(p)
     ui.pills[i] = pill
   end
   ui.new = S.Button(p, "", 150, 22, function() if mode == "cal" then editEvent() else postSearch() end end, "primary")
-  ui.new:SetPoint("TOPRIGHT")
+  ui.new:SetPoint("TOPRIGHT", 0, -4)
   -- my role (used for the answers and the join requests)
   local roles = {}
   for _, r in ipairs(ROLES) do roles[#roles + 1] = { r[1], L[r[2]] } end
@@ -612,7 +652,7 @@ local function build(p)
     ns.db.myRole = v
     -- the answers already given follow the new role
     for _, r in ipairs(Sync.All("rsvp")) do
-      if r.who == me and r.role ~= v then
+      if isMine(r.who) and r.role ~= v then
         local copy = CopyTable(r); copy.role = v
         Sync.Put("rsvp", copy)
       end
@@ -626,7 +666,7 @@ local function build(p)
 
   -- calendar ------------------------------------------------------------------
   local cal = CreateFrame("Frame", nil, p)
-  cal:SetPoint("TOPLEFT", 0, -32)
+  cal:SetPoint("TOPLEFT", 0, -40)
   cal:SetPoint("BOTTOMRIGHT")
   ui.cal = cal
   local listBox = CreateFrame("Frame", nil, cal)
@@ -751,7 +791,7 @@ local function build(p)
 
   -- group finder -----------------------------------------------------------------
   local lfg = CreateFrame("Frame", nil, p)
-  lfg:SetPoint("TOPLEFT", 0, -32)
+  lfg:SetPoint("TOPLEFT", 0, -40)
   lfg:SetPoint("BOTTOMRIGHT")
   S.Card(lfg, 8)
   ui.lfg = lfg

@@ -287,7 +287,8 @@ end
 
 -- an icon path from a list of candidates: the first one the client has
 function S.PickIcon(list)
-  if type(list) == "string" then return list end
+  if type(list) == "string" or type(list) == "number" then return list end -- a path or a file id
+  if type(list) ~= "table" then return "Interface\\Icons\\INV_Misc_QuestionMark" end
   for _, p in ipairs(list) do
     if not GetFileIDFromPath or GetFileIDFromPath(p) then return p end
   end
@@ -374,6 +375,45 @@ function S.Pill(parent, text, onClick)
     if a then self:LockHighlight() else self:UnlockHighlight() end
   end
   return p
+end
+
+-- a page's view switch (Calendar / Group finder...): a large game button with an icon and a
+-- bigger label; the active one stays pressed with a white label, the others are gold
+function S.ModeTab(parent, text, icon, onClick)
+  local b = S.Button(parent, "", 170, 30, onClick)
+  b:SetText("")
+  b.icon = b:CreateTexture(nil, "OVERLAY")
+  b.icon:SetSize(20, 20)
+  b.icon:SetPoint("LEFT", 10, 0)
+  b.icon:SetTexture(S.PickIcon(icon))
+  b.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+  b.label:SetPoint("LEFT", b.icon, "RIGHT", 8, 0)
+  b.label:SetWordWrap(false)
+  b.text = b.label -- (callers set the label through .text)
+  function b:SetLabel(t)
+    self.label:SetText(t or "")
+    self:SetWidth(math.max(150, math.ceil(self.label:GetStringWidth()) + 54))
+  end
+  function b:SetActive(a)
+    self.active = a
+    if a then
+      self:LockHighlight()
+      self:SetButtonState("PUSHED", true)
+      self.label:SetTextColor(1, 1, 1)
+      self.icon:SetDesaturated(false)
+      self.icon:SetAlpha(1)
+    else
+      self:UnlockHighlight()
+      self:SetButtonState("NORMAL")
+      self.label:SetTextColor(1, 0.82, 0)
+      self.icon:SetDesaturated(true)
+      self.icon:SetAlpha(0.8)
+    end
+  end
+  b:SetLabel(text)
+  b:SetActive(false)
+  return b
 end
 
 -- Dialog -----------------------------------------------------------------------

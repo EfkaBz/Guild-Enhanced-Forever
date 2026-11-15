@@ -14,6 +14,7 @@ local PAGE = 7
 local COL_W = 292
 local page, ui = nil, { active = {}, newbies = {}, levels = {}, classes = {}, seniors = {} }
 local me = UnitName("player")
+ns.OnMyName(function(n) me = n end) -- full roster name once known
 local DAY = 86400
 
 -- Activity ----------------------------------------------------------------------------------------------
