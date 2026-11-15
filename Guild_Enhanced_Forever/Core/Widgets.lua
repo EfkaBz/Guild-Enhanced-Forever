@@ -269,6 +269,15 @@ function S.OpenMenu(owner, items, opts)
     row:Show()
   end
   for i = #items + 1, #menuRows do menuRows[i]:Hide() end
+  -- wider when an entry needs it: every entry is read in full, never cut
+  for i = 1, #items do
+    local it, row = items[i], menuRows[i]
+    if not it.separator then
+      local need = math.ceil(row.text:GetStringWidth()) + (it.title and 0 or 18) + 2 * MENU_PAD + 14
+      if need > width then width = need end
+    end
+  end
+  width = math.min(width, math.floor(UIParent:GetWidth() * 0.6))
   menu:SetSize(width, y + MENU_PAD)
   menu:ClearAllPoints()
   if opts.anchor == "below" then
@@ -367,9 +376,12 @@ end
 
 -- Pill toggles (log filters): small panel buttons that stay lit while on ---------------------
 function S.Pill(parent, text, onClick)
-  local p = S.Button(parent, text, 60, 20, onClick)
-  p:SetWidth(math.max(40, p.text:GetStringWidth() + 22))
-  p.fitWidth = p:GetWidth() - 8
+  -- measured at full size first (a narrow button would shrink the font before it is measured), then
+  -- sized to the label: every pill keeps the same font and shows its whole word
+  local p = S.Button(parent, "", 400, 24, onClick)
+  p.fitWidth = 1000
+  p:SetText(text)
+  p:SetWidth(math.max(70, math.ceil(p.text:GetStringWidth()) + 32))
   function p:SetActive(a)
     self.active = a
     if a then self:LockHighlight() else self:UnlockHighlight() end
@@ -417,9 +429,12 @@ function S.ModeTab(parent, text, icon, onClick)
 end
 
 -- Dialog -----------------------------------------------------------------------
--- one shared modal: S.Dialog{ title, text, input = default text | nil, placeholder, maxLetters,
---   accept, cancel, danger, onAccept(text) }
+-- one shared modal, in the look of the Options and form windows (the game's portrait frame with the
+-- guild crest, the message on a card, the buttons under it):
+-- S.Dialog{ title, sub, text, input = default text | nil, placeholder, maxLetters, accept, cancel,
+--   danger, onAccept(text) }
 local dlg
+local DLG_W, DLG_PAD = 420, 16
 local function buildDialog()
   local blocker = CreateFrame("Frame", "GuildEnhancedForeverDialogBlocker", UIParent)
   blocker:SetAllPoints(UIParent)
@@ -427,25 +442,42 @@ local function buildDialog()
   blocker:EnableMouse(true)
   blocker:Hide()
 
-  dlg = S.Window("GuildEnhancedForeverDialog", blocker, 380, 150, "")
+  dlg = S.Window("GuildEnhancedForeverDialog", blocker, DLG_W, 200, "", "portrait")
   dlg:SetFrameStrata("DIALOG")
   dlg:SetFrameLevel(blocker:GetFrameLevel() + 5)
   dlg:SetPoint("CENTER", UIParent, "CENTER", 0, 120)
   dlg.blocker = blocker
   dlg.close:SetScript("OnClick", function() dlg.Dismiss() end)
+  if dlg.titleBar then S.Draggable(dlg, dlg.titleBar) end
+  if not S.SetPortrait(dlg, ns.ICON) then
+    local icon = dlg:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(40, 40)
+    icon:SetPoint("TOPLEFT", 8, -6)
+    icon:SetTexture(ns.ICON)
+  end
 
-  dlg.text = S.Text(dlg, 12, "text")
-  dlg.text:SetPoint("TOPLEFT", 24, -48)
-  dlg.text:SetPoint("TOPRIGHT", -24, -48)
+  dlg.sub = S.Text(dlg, 12, "dim")
+  dlg.sub:SetPoint("TOPLEFT", 66, -32)
+  dlg.sub:SetPoint("RIGHT", -16, 0)
+
+  dlg.card = CreateFrame("Frame", nil, dlg)
+  dlg.card:SetPoint("TOPLEFT", 14, -62)
+  dlg.card:SetPoint("BOTTOMRIGHT", -14, 56)
+  S.Card(dlg.card, 8)
+
+  dlg.text = S.Text(dlg.card, 12, "text")
+  dlg.text:SetFontObject(GameFontHighlight)
+  dlg.text:SetPoint("TOP", 0, -DLG_PAD)
+  dlg.text:SetWidth(DLG_W - 28 - 2 * DLG_PAD)
   dlg.text:SetWordWrap(true)
   dlg.text:SetJustifyH("CENTER")
   dlg.text:SetJustifyV("TOP")
 
-  dlg.input = S.EditBox(dlg, 330, 24, "", function() dlg.Accept() end)
-  dlg.accept = S.Button(dlg, "", 128, 22, function() dlg.Accept() end, "primary")
-  dlg.accept:SetPoint("BOTTOMRIGHT", dlg, "BOTTOM", -4, 18)
-  dlg.cancel = S.Button(dlg, "", 128, 22, function() dlg.Dismiss() end)
-  dlg.cancel:SetPoint("BOTTOMLEFT", dlg, "BOTTOM", 4, 18)
+  dlg.input = S.EditBox(dlg.card, DLG_W - 28 - 2 * DLG_PAD, 24, "", function() dlg.Accept() end)
+  dlg.accept = S.Button(dlg, "", 140, 26, function() dlg.Accept() end, "primary")
+  dlg.accept:SetPoint("BOTTOMRIGHT", dlg, "BOTTOM", -6, 16)
+  dlg.cancel = S.Button(dlg, "", 140, 26, function() dlg.Dismiss() end)
+  dlg.cancel:SetPoint("BOTTOMLEFT", dlg, "BOTTOM", 6, 16)
   dlg.input.edit:SetScript("OnEscapePressed", function() dlg.Dismiss() end)
 
   function dlg.Dismiss()
@@ -464,15 +496,18 @@ end
 function S.Dialog(args)
   if not dlg then buildDialog() end
   local L = ns.L
+  S.CloseMenu(true)
   dlg.args = args
   dlg.title:SetText(args.title or "")
+  dlg.sub:SetText(args.sub or "Guild Enhanced Forever")
   dlg.text:SetText(args.text or "")
-  local th = args.text and dlg.text:GetStringHeight() or 0
-  local h = 48 + th + 14
+  dlg.text:SetShown(args.text ~= nil)
+  local th = args.text and math.ceil(dlg.text:GetStringHeight()) or 0
+  local h = DLG_PAD + th -- inside the card
   if args.input then
     dlg.input:Show()
     dlg.input:ClearAllPoints()
-    dlg.input:SetPoint("TOP", 0, -(48 + th + (th > 0 and 10 or 0)))
+    dlg.input:SetPoint("TOP", 0, -(DLG_PAD + th + (th > 0 and 12 or 0)))
     dlg.input:SetText(args.input)
     dlg.input.placeholder:SetText(args.placeholder or "")
     dlg.input:SetMaxLetters(args.maxLetters or 0)
@@ -482,15 +517,17 @@ function S.Dialog(args)
         dlg.input.edit:HighlightText()
       end
     end or nil
-    h = h + 24 + 10
+    h = h + (th > 0 and 12 or 0) + 24
   else
     dlg.input:Hide()
   end
-  dlg:SetHeight(h + 48)
+  h = h + DLG_PAD
+  dlg:SetHeight(62 + math.max(h, 44) + 56)
   dlg.accept:SetText(args.accept or L["OK"])
   dlg.cancel:SetText(args.cancel or L["Cancel"])
   dlg.blocker:Show()
   dlg:Show()
+  if S.AnimateOpen then S.AnimateOpen(dlg, 0, -10) end
   PlaySound(SOUNDKIT and SOUNDKIT.IG_MAINMENU_OPEN or 850)
   if args.input then
     dlg.input:SetFocus()

@@ -34,6 +34,18 @@ function ns.MyRole()
   return CLASS_ROLE[file] or "dps"
 end
 function ns.RoleIcon(role) return S.PickIcon(ROLE[role] and ROLE[role][3] or ROLE.dps[3]) end
+-- the game's round role icon (its group finder art) on a texture; the spell icon when it lacks it
+local GAME_ROLE = { tank = "TANK", heal = "HEALER", dps = "DAMAGER" }
+function ns.SetRoleIcon(tex, role)
+  role = ROLE[role] and role or "dps"
+  if GetTexCoordsForRole then
+    tex:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-ROLES")
+    tex:SetTexCoord(GetTexCoordsForRole(GAME_ROLE[role]))
+  else
+    tex:SetTexture(ns.RoleIcon(role))
+    tex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  end
+end
 function ns.RoleName(role) return L[ROLE[role] and ROLE[role][2] or "Damage"] end
 
 -- Kinds and places ------------------------------------------------------------------------------------
@@ -47,24 +59,47 @@ local KINDS = {
 local KIND = {}
 for _, k in ipairs(KINDS) do KIND[k[1]] = k end
 
--- instance map ids -> the client's own (translated) names; English when it does not know them
+-- the places of each kind: instance map ids -> the client's own (translated) names, English when it
+-- does not know them; wings get their own entry ("Scarlet Monastery - Library"), in dungeon order.
+-- F marks the new dungeons of the Forever server (no map id: their names come from the locales)
+local FOREVER_STAR = "|TInterface\\COMMON\\ReputationStar:14:14:0:0:32:32:0:16:0:16|t"
+local function F(english) return { nil, english, forever = true } end
 local PLACES = {
-  { 409, "Molten Core" }, { 249, "Onyxia's Lair" }, { 469, "Blackwing Lair" }, { 309, "Zul'Gurub" },
-  { 509, "Ruins of Ahn'Qiraj" }, { 531, "Temple of Ahn'Qiraj" }, { 533, "Naxxramas" },
-  { 389, "Ragefire Chasm" }, { 36, "The Deadmines" }, { 43, "Wailing Caverns" }, { 33, "Shadowfang Keep" },
-  { 34, "The Stockade" }, { 48, "Blackfathom Deeps" }, { 90, "Gnomeregan" }, { 47, "Razorfen Kraul" },
-  { 189, "Scarlet Monastery" }, { 129, "Razorfen Downs" }, { 70, "Uldaman" }, { 209, "Zul'Farrak" },
-  { 349, "Maraudon" }, { 109, "Sunken Temple" }, { 230, "Blackrock Depths" }, { 229, "Blackrock Spire" },
-  { 429, "Dire Maul" }, { 289, "Scholomance" }, { 329, "Stratholme" },
+  raid = {
+    { 309, "Zul'Gurub" }, { 409, "Molten Core" }, { 249, "Onyxia's Lair" }, { 469, "Blackwing Lair" },
+    { 509, "Ruins of Ahn'Qiraj" }, { 531, "Temple of Ahn'Qiraj" }, { 533, "Naxxramas" },
+  },
+  dungeon = {
+    { 389, "Ragefire Chasm" }, F("The Hall of Thanes"), F("Ruins of Lordaeron"),
+    { 43, "Wailing Caverns" }, { 36, "The Deadmines" }, { 33, "Shadowfang Keep" },
+    { 48, "Blackfathom Deeps" }, { 34, "The Stockade" }, F("Excavation Site: Wetlands"), F("City of Dalaran"),
+    { 90, "Gnomeregan" }, { 47, "Razorfen Kraul" },
+    { 189, "Scarlet Monastery", "Graveyard" }, { 189, "Scarlet Monastery", "Library" },
+    { 189, "Scarlet Monastery", "Armory" }, { 189, "Scarlet Monastery", "Cathedral" },
+    F("The Drowned City"), { 129, "Razorfen Downs" }, F("Krol'dok Stronghold"),
+    { 70, "Uldaman" }, { 209, "Zul'Farrak" }, { 349, "Maraudon" }, F("Alcaz Prison"),
+    { 109, "Sunken Temple" }, { 230, "Blackrock Depths" },
+    { 229, "Blackrock Spire", "Lower" }, { 229, "Blackrock Spire", "Upper" },
+    { 429, "Dire Maul", "East" }, { 429, "Dire Maul", "West" }, { 429, "Dire Maul", "North" },
+    { 289, "Scholomance" }, { 329, "Stratholme", "Living side" }, { 329, "Stratholme", "Undead side" },
+    F("Blackmaw Hold"), F("Shaper's Terrace"),
+  },
+  pvp = { { 489, "Warsong Gulch" }, { 529, "Arathi Basin" }, { 30, "Alterac Valley" } },
 }
-local function placeName(id, english)
+local function placeName(id, english, wing)
+  if not id then return L[english] end
   local ok, name = pcall(GetRealZoneText, id)
-  if ok and type(name) == "string" and name ~= "" then return name end
-  return english
+  if not (ok and type(name) == "string" and name ~= "") then name = english end
+  return wing and (name .. " - " .. L[wing]) or name
 end
-local function placeOptions()
+-- the places offered for a kind (none for an outing or "other": the free text is used)
+local function placeOptions(kind)
   local list = { { "", L["(none)"] } }
-  for _, p in ipairs(PLACES) do list[#list + 1] = { placeName(p[1], p[2]), placeName(p[1], p[2]) } end
+  for _, p in ipairs(PLACES[kind] or {}) do
+    local n = placeName(p[1], p[2], p[3])
+    -- the menu marks the Forever dungeons with a gold star; the place itself stays the plain name
+    list[#list + 1] = { n, p.forever and (FOREVER_STAR .. " " .. n .. " |cffd4a017(Forever)|r") or n }
+  end
   return list
 end
 
@@ -256,19 +291,39 @@ local function editEvent(ev)
   local t = ev and ev.t or (dayStart(time()) + 86400 + 20 * 3600 + 30 * 60)
   local d = date("*t", t)
   local dayIndex = math.max(0, math.floor((dayStart(t) - dayStart(time())) / 86400 + 0.5))
+  local kind = ev and ev.kind or "raid"
   local preset, other = "", ev and ev.place or ""
-  for _, p in ipairs(placeOptions()) do if p[1] ~= "" and p[1] == other then preset, other = p[1], "" end end
+  for _, p in ipairs(placeOptions(kind)) do if p[1] ~= "" and p[1] == other then preset, other = p[1], "" end end
   S.Form({
-    title = ev and L["Edit the event"] or L["New event"], width = 470, accept = ev and L["Save"] or L["Create"],
+    title = ev and L["Edit the event"] or L["New event"], width = 500, accept = ev and L["Save"] or L["Create"],
+    sub = L["Shared with the guildmates who have Guild Enhanced."],
     fields = {
+      { kind = "section", key = "s1", label = L["Event"] },
       { key = "title", label = L["Title"], kind = "text", value = ev and ev.title, max = 60, required = true,
         placeholder = L["Molten Core, Friday raid..."] },
-      { key = "kind", label = L["Type"], kind = "drop", value = ev and ev.kind or "raid", options = kinds },
-      { key = "preset", label = L["Place"], kind = "drop", value = preset, options = placeOptions() },
+      { key = "kind", label = L["Type"], kind = "drop", value = kind, options = kinds, size = 0.5,
+        onChange = function(v, f)
+          -- the places follow the type
+          kind = v
+          local w = f.active.preset
+          if w then w.value = ""; w:Refresh() end
+        end },
+      { key = "preset", label = L["Place"], kind = "drop", value = preset, size = 0.5,
+        options = function() return placeOptions(kind) end },
       { key = "other", label = L["Or another place"], kind = "text", value = other, max = 40 },
-      { key = "day", label = L["Day"], kind = "drop", value = dayIndex, options = dayOptions() },
-      { key = "hour", label = L["Hour"], kind = "drop", value = d.hour, options = hourOptions() },
-      { key = "min", label = L["Minutes"], kind = "drop", value = d.min - d.min % 15, options = MINUTES },
+      { kind = "section", key = "s2", label = L["When"] },
+      { key = "now", label = L["Right now (no set time)"], kind = "check", value = false,
+        onChange = function(on, f)
+          -- now: the day and the time are not used
+          for _, k in ipairs({ "day", "hour", "min" }) do
+            local w = f.active[k]
+            if w and w.SetEnabled then w:SetEnabled(not on) end
+            if w then w:SetAlpha(on and 0.5 or 1) end
+          end
+        end },
+      { key = "day", label = L["Day"], kind = "drop", value = dayIndex, options = dayOptions(), size = 1 / 3 },
+      { key = "hour", label = L["Hour"], kind = "drop", value = d.hour, options = hourOptions(), size = 1 / 3 },
+      { key = "min", label = L["Minutes"], kind = "drop", value = d.min - d.min % 15, options = MINUTES, size = 1 / 3 },
       { key = "size", label = L["Places"], kind = "drop", value = ev and ev.size or 0, options = SIZES,
         hint = L["Past this number, the next ones go to the waiting list."] },
       { key = "notes", label = L["Notes"], kind = "multi", value = ev and ev.notes, max = 200, height = 54 },
@@ -276,7 +331,7 @@ local function editEvent(ev)
     onAccept = function(v)
       local base = date("*t", dayStart(time()) + v.day * 86400 + 3 * 3600)
       base.hour, base.min, base.sec = v.hour, v.min, 0
-      local when = time(base)
+      local when = v.now and now() or time(base)
       local rec = ev and CopyTable(ev) or { id = ns.MyName() .. "-" .. now() .. "-" .. math.random(99) }
       rec.title, rec.kind, rec.t, rec.size, rec.notes = v.title, v.kind, when, v.size, v.notes
       rec.place = v.other ~= "" and v.other or v.preset
@@ -404,7 +459,7 @@ local function fillPeople(groups)
         p.who = r.who
         p.header:Hide()
         p.role:Show()
-        p.role:SetTexture(ns.RoleIcon(r.role))
+        ns.SetRoleIcon(p.role, r.role)
         local m = ns.byName[r.who]
         p.name:SetText((m and m.online and "" or "|cff999999") .. (r.who or "?") .. "|r")
         p.name:SetTextColor(ns.ClassColor(m and m.classFile or r.cls))
@@ -498,8 +553,7 @@ local function lfgRow(i)
     n.icon = n:CreateTexture(nil, "ARTWORK")
     n.icon:SetSize(18, 18)
     n.icon:SetPoint("LEFT")
-    n.icon:SetTexture(ns.RoleIcon(role))
-    n.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    ns.SetRoleIcon(n.icon, role)
     n.text = S.Text(n, 13, "gold")
     n.text:SetPoint("LEFT", n.icon, "RIGHT", 5, 0)
     S.Tooltip(n, ns.RoleName(role))
@@ -646,9 +700,9 @@ local function build(p)
   ui.new = S.Button(p, "", 150, 22, function() if mode == "cal" then editEvent() else postSearch() end end, "primary")
   ui.new:SetPoint("TOPRIGHT", 0, -4)
   -- my role (used for the answers and the join requests)
-  local roles = {}
-  for _, r in ipairs(ROLES) do roles[#roles + 1] = { r[1], L[r[2]] } end
-  ui.myRole = S.Dropdown(p, 120, roles, ns.MyRole, function(v)
+  -- the three roles side by side, an icon and a check box each (like the game's group finder):
+  -- the checked one is my role
+  local function setRole(v)
     ns.db.myRole = v
     -- the answers already given follow the new role
     for _, r in ipairs(Sync.All("rsvp")) do
@@ -658,8 +712,57 @@ local function build(p)
       end
     end
     ns.RefreshEvents()
-  end)
-  ui.myRole:SetPoint("RIGHT", ui.new, "LEFT", -8, 0)
+  end
+  -- the game's own role art (its group finder): the round icons with the copper ring on their
+  -- colored glow, the check box at the bottom left
+  local ROLE_W, ROLE_SIZE = 50, 36
+  ui.myRole = CreateFrame("Frame", nil, p)
+  ui.myRole:SetSize(#ROLES * ROLE_W, ROLE_SIZE)
+  ui.myRole:SetPoint("RIGHT", ui.new, "LEFT", -14, -6)
+  ui.myRole.buttons = {}
+  for k, r in ipairs(ROLES) do
+    local b = CreateFrame("Button", nil, ui.myRole)
+    b:SetSize(ROLE_SIZE, ROLE_SIZE)
+    b:SetPoint("LEFT", (k - 1) * ROLE_W, 0)
+    local gr = GAME_ROLE[r[1]]
+    b.glow = b:CreateTexture(nil, "BACKGROUND")
+    b.glow:SetPoint("CENTER")
+    b.glow:SetSize(ROLE_SIZE * 1.25, ROLE_SIZE * 1.25)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetAllPoints()
+    ns.SetRoleIcon(b.icon, r[1])
+    if GetBackgroundTexCoordsForRole then
+      b.glow:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-ROLEBACKGROUNDS")
+      b.glow:SetTexCoord(GetBackgroundTexCoordsForRole(gr))
+      b.glow:SetAlpha(0.6)
+    else
+      b.glow:Hide()
+    end
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+    b.check = S.Check(b, nil, 12)
+    b.check:SetPoint("BOTTOMLEFT", -6, -6)
+    local function pick() setRole(r[1]) end
+    b:SetScript("OnClick", pick)
+    b.check:SetScript("OnClick", pick)
+    for _, f in ipairs({ b, b.check }) do
+      f:SetScript("OnEnter", function()
+        GameTooltip:SetOwner(b, "ANCHOR_BOTTOM")
+        GameTooltip:SetText(L[r[2]])
+        GameTooltip:Show()
+      end)
+      f:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    b.role = r[1]
+    ui.myRole.buttons[k] = b
+  end
+  function ui.myRole:Refresh()
+    local mine = ns.MyRole()
+    for _, b in ipairs(self.buttons) do
+      local on = b.role == mine
+      b.check:SetChecked(on)
+    end
+  end
+  ui.myRole:Refresh()
   local roleLabel = S.Text(p, 11, "muted")
   roleLabel:SetPoint("RIGHT", ui.myRole, "LEFT", -8, 0)
   roleLabel:SetText(L["My role"])
@@ -755,8 +858,7 @@ local function build(p)
     c.icon = c:CreateTexture(nil, "ARTWORK")
     c.icon:SetSize(20, 20)
     c.icon:SetPoint("LEFT")
-    c.icon:SetTexture(ns.RoleIcon(role))
-    c.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    ns.SetRoleIcon(c.icon, role)
     c.text = S.Text(c, 15, "gold")
     c.text:SetPoint("LEFT", c.icon, "RIGHT", 6, 0)
     c.role = role

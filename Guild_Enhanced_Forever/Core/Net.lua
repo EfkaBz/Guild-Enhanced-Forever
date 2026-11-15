@@ -96,7 +96,11 @@ end
 
 -- Throttled queue -----------------------------------------------------------------------------------
 local queues = { {}, {} } -- 1 urgent, 2 bulk
-local tokens, MAX_TOKENS, RATE = 6, 6, 1.2
+local tokens, MAX_TOKENS, RATE = 6, 6, 1
+local RESULT = Enum and Enum.SendAddonMessageResult or {}
+local function throttled(res)
+  return res ~= nil and (res == RESULT.AddonMessageThrottle or res == RESULT.ChannelThrottle)
+end
 -- chat lockdown: the game locks addon messages in some situations (instances, encounters, PvP):
 -- what we receive is hidden and what we send is dropped. Messages wait in the queue meanwhile and
 -- leave as soon as it ends; then we ask the guild for what we missed (see "Lockdown" below).
@@ -115,7 +119,14 @@ pump:SetScript("OnUpdate", function(self, e)
     if not q then break end
     local m = table.remove(q, 1)
     if not m.cancel or not m.cancel() then
-      SendAddon(PREFIX, m.text, m.channel, m.target)
+      local res = SendAddon(PREFIX, m.text, m.channel, m.target)
+      if throttled(res) then
+        -- the game refused it (too many messages): tried again a moment later
+        m.tries = (m.tries or 0) + 1
+        if m.tries < 10 then table.insert(q, 1, m) end
+        tokens = 0
+        break
+      end
       tokens = tokens - 1
     end
   end
@@ -282,13 +293,15 @@ local function apply(coll, rec, fromNet, sender)
   local s = store(coll)
   if not s then return false end
   local old = s[rec.id]
-  if old and old.v >= rec.v then return false end
+  if old and old.v > rec.v then return false end
+  -- same version from two players (changed in the same second): the same winner everywhere
+  if old and old.v == rec.v and not ((rec.ed or "") > (old.ed or "")) then return false end
   if fromNet and opts.validate and not opts.validate(rec, old, sender) then
     Net.Log(sender, coll, "refused " .. rec.id .. " by " .. tostring(rec.ed))
     return false
   end
   if fromNet then Net.Log(sender, coll, "kept " .. rec.id) end
-  rec.t = now() -- when this copy changed here (what the login question compares)
+  rec.lt = now() -- when this copy changed here (what the login question compares)
   s[rec.id] = rec
   if opts.changed then
     local ok, err = pcall(opts.changed, rec, old)
@@ -340,7 +353,7 @@ Net.On("Q", function(d)
       local s = store(coll)
       if s then
         for id, r in pairs(s) do
-          if (r.t or r.v) > d.since then
+          if (r.lt or r.v) > d.since then
             local key = coll .. "\31" .. id
             pendingSend[key] = r.v
             local v = r.v
@@ -370,12 +383,19 @@ local function prune()
   end
 end
 
+local missedSince, lastAsk = nil, 0
 local function seenKey() return ns.GuildName() end
 local function markSeen()
   local g = seenKey()
   if g and ns.db then
     ns.db.syncSeen = ns.db.syncSeen or {}
-    ns.db.syncSeen[g] = now()
+    local t = now()
+    if missedSince or locked() then
+      t = math.min(t, missedSince or t)
+      ns.db.syncSeen[g] = math.min(ns.db.syncSeen[g] or t, t)
+    else
+      ns.db.syncSeen[g] = t
+    end
   end
 end
 
@@ -387,6 +407,17 @@ function Sync.Start()
   local since = ns.db.syncSeen and ns.db.syncSeen[g] or 0
   -- a little margin for clocks and messages in flight
   Net.Send("Q", { since = math.max(0, since - 600) }, "GUILD")
+  -- my own changes that may not have left (logout with messages waiting, chat lockdown): sent again;
+  -- the others keep them only when newer
+  local mine = ns.MyName()
+  for coll in pairs(colls) do
+    local s = store(coll)
+    if s then
+      for _, r in pairs(s) do
+        if r.ed == mine and (r.lt or r.v) > since - 600 then Net.Send("P", { c = coll, r = r }, "GUILD", nil, true) end
+      end
+    end
+  end
   markSeen()
   C_Timer.NewTicker(60, markSeen)
   ns.Fire("SYNC_READY")
@@ -410,7 +441,6 @@ end)
 -- while the game locks addon messages nothing can be read or sent (no addon can get around it).
 -- When it ends: the waiting messages leave (queue above) and we ask the guild for every record
 -- changed meanwhile, so the shared data is complete again a few seconds later.
-local missedSince, lastAsk = nil, 0
 function Net.MissedSince()
   missedSince = missedSince or now()
 end

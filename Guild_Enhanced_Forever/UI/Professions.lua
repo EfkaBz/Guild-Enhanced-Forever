@@ -443,7 +443,8 @@ local function recipeRow(i)
 end
 
 -- Craft requests ---------------------------------------------------------------------------------------
-local ST = { open = { "Open", C.gold }, taken = { "In progress", C.warn }, done = { "Done", C.good } }
+local ST = { open = { "Open", C.gold }, taken = { "In progress", C.warn }, done = { "Done", C.good },
+  refused = { "Refused", C.bad } }
 
 local function nameLabel(name)
   local m = name and ns.byName[name]
@@ -462,21 +463,23 @@ local function crafterOptions(code, key)
   return list
 end
 
--- code: the recipe (optional); to: a crafter (optional)
-function ns.CraftRequest(code, to, key)
-  local name = code and recipeInfo(code) or ""
+-- code: the recipe (optional); to: a crafter (optional); from: a refused request sent again (its
+-- item, quantity and note filled in; it is replaced by the new one)
+function ns.CraftRequest(code, to, key, from)
+  local name = from and from.what or code and recipeInfo(code) or ""
   S.Form({
     title = L["Craft request"], width = 460, accept = L["Send"],
     fields = {
       { key = "what", label = L["Item"], kind = "text", value = name, max = 60, required = true },
-      { key = "qty", label = L["Quantity"], kind = "number", value = 1 },
+      { key = "qty", label = L["Quantity"], kind = "number", value = from and from.qty or 1 },
       { key = "to", label = L["Crafter"], kind = "drop", value = to or "", options = crafterOptions(code, key) },
-      { key = "note", label = L["Note"], kind = "text", max = 100,
+      { key = "note", label = L["Note"], kind = "text", max = 100, value = from and from.note,
         placeholder = L["I bring the materials, tip offered..."] },
     },
     onAccept = function(v)
       Sync.Put("craft", { id = me .. "-" .. now(), what = v.what, code = code, qty = math.max(1, math.min(99, v.qty or 1)),
         to = v.to or "", st = "open", note = v.note })
+      if from then Sync.Delete("craft", from.id) end
       mode = "req"
       ns.RefreshProfessions(true)
     end,
@@ -486,8 +489,27 @@ end
 local function setState(rec, st)
   local copy = CopyTable(rec)
   copy.st = st
-  if st == "taken" then copy.crafter = me end
+  if st == "taken" or st == "refused" then copy.crafter = me end
+  if st == "open" then copy.crafter = nil end
   Sync.Put("craft", copy)
+end
+
+-- sent to me by name (older versions used the first name alone: mine unless another member shares it)
+local function toMe(rec)
+  if rec.to == me then return true end
+  return rec.to ~= nil and rec.to ~= "" and rec.to == UnitName("player") and not (ns.sharedFirst and ns.sharedFirst[rec.to])
+end
+
+-- the crafter turns the request down: one sent to them is refused (the asker is told); one sent to
+-- anyone stays open for the others and only leaves this crafter's list
+local function refuse(rec)
+  if toMe(rec) then
+    setState(rec, "refused")
+  else
+    ns.db.craftHidden = ns.db.craftHidden or {}
+    ns.db.craftHidden[rec.id] = true
+    if rec.st == "taken" and rec.crafter == me then setState(rec, "open") end
+  end
 end
 
 -- a request for me: sent to me by name, or sent to anyone for a recipe I know
@@ -508,7 +530,7 @@ Sync.Register("craft", {
   keep = 7 * 86400,
   expired = function(r, t)
     local age = t - (r.v or 0)
-    return (r.st == "done" and age > 7 * 86400) or age > 30 * 86400
+    return ((r.st == "done" or r.st == "refused") and age > 7 * 86400) or age > 30 * 86400
   end,
   validate = function(rec) return ns.byName[rec.ed or ""] ~= nil end,
   changed = function(rec, old)
@@ -518,9 +540,10 @@ Sync.Register("craft", {
     if not old and rec.st == "open" and forMe(rec) then
       ns.Notify({ icon = icon, title = L["Craft request"], text = string.format(L["%s asks you: %d x %s"],
         nameLabel(rec.by), rec.qty or 1, rec.what or ""), buttons = { { L["View"], go, true } } })
-    elseif old and rec.by == me and old.st ~= rec.st and (rec.st == "taken" or rec.st == "done") then
-      ns.Notify({ icon = icon, title = L["Craft request"], text = string.format(
-        rec.st == "taken" and L["%s is making your %s."] or L["%s made your %s."], nameLabel(rec.crafter), rec.what or ""),
+    elseif old and rec.by == me and old.st ~= rec.st and (rec.st == "taken" or rec.st == "done" or rec.st == "refused") then
+      local text = rec.st == "taken" and L["%s is making your %s."] or rec.st == "refused" and L["%s declined your %s."]
+        or L["%s made your %s."]
+      ns.Notify({ icon = icon, title = L["Craft request"], text = string.format(text, nameLabel(rec.crafter), rec.what or ""),
         buttons = { { L["Whisper"], function() ChatFrame_SendTell(rec.crafter) end, true } } })
     end
   end,
@@ -552,6 +575,8 @@ local function reqRow(i)
   r.crafter:SetWidth(110)
   r.b1 = S.Button(r, "", 104, 22)
   r.b1:SetPoint("RIGHT", -8, 0)
+  r.b2 = S.Button(r, L["Decline"], 104, 22)
+  r.b2:SetPoint("RIGHT", r.b1, "LEFT", -6, 0)
   ui.reqs[i] = r
   return r
 end
@@ -559,15 +584,19 @@ end
 local function refreshRequests(animate)
   -- finished requests leave the list (the record stays a few days: the asker is told it is done)
   local list = {}
-  for _, rec in ipairs(Sync.All("craft")) do if rec.st ~= "done" then list[#list + 1] = rec end end
+  -- refused ones stay for the asker only (to see the answer); the ones I turned down leave my list
+  local hidden = ns.db and ns.db.craftHidden or {}
+  for _, rec in ipairs(Sync.All("craft")) do
+    if rec.st ~= "done" and not hidden[rec.id] and (rec.st ~= "refused" or rec.by == me) then list[#list + 1] = rec end
+  end
   table.sort(list, function(a, b)
-    local order = { open = 1, taken = 2, done = 3 }
+    local order = { open = 1, taken = 2, refused = 3, done = 4 }
     if a.st ~= b.st then return (order[a.st] or 9) < (order[b.st] or 9) end
     return (a.v or 0) > (b.v or 0)
   end)
   local open = 0
   for i, rec in ipairs(list) do
-    if rec.st ~= "done" then open = open + 1 end
+    if rec.st == "open" or rec.st == "taken" then open = open + 1 end
     local r = reqRow(i)
     local _, _, icon = recipeInfo(rec.code or "0")
     r.icon.tex:SetTexture(icon or "Interface\\Icons\\INV_Misc_Bag_10")
@@ -580,14 +609,29 @@ local function refreshRequests(animate)
     r.crafter:SetText(rec.crafter and nameLabel(rec.crafter) or (rec.to ~= "" and rec.to and ("→ " .. nameLabel(rec.to)) or ""))
     local action
     if rec.by == me then
-      action = rec.st == "done" and { L["Remove"], function() Sync.Delete("craft", rec.id) end }
+      action = (rec.st == "done" or rec.st == "refused") and { L["OK"], function() Sync.Delete("craft", rec.id) end }
         or { L["Cancel"], function() Sync.Delete("craft", rec.id) end }
-    elseif rec.st == "open" and (rec.to == "" or rec.to == nil or rec.to == me) then
+    elseif rec.st == "open" and (rec.to == "" or rec.to == nil or toMe(rec)) then
       action = { L["I'll make it"], function() setState(rec, "taken") end, true }
     elseif rec.st == "taken" and rec.crafter == me then
       action = { L["Done"], function() setState(rec, "done") end, true }
     elseif rec.st ~= "done" then
       action = { L["Whisper"], function() ChatFrame_SendTell(rec.by) end }
+    end
+    -- the crafter can turn down an open request they could take, or one they took
+    local canRefuse = rec.by ~= me and ((rec.st == "open" and (rec.to == "" or rec.to == nil or toMe(rec)))
+      or (rec.st == "taken" and rec.crafter == me))
+    -- a refused request of mine: send it again (to another crafter) or OK to clear it
+    local canResend = rec.by == me and rec.st == "refused"
+    r.b2:SetShown(canRefuse or canResend)
+    r.crafter:SetShown(not canRefuse) -- the button sits where the crafter's name is (me, then)
+    if canRefuse then
+      r.b2:SetText(L["Decline"])
+      r.b2:SetScript("OnClick", function() refuse(rec); ns.RefreshProfessions() end)
+    elseif canResend then
+      r.b2:SetText(L["Resend"])
+      r.b2:SetScript("OnClick", function() ns.CraftRequest(rec.code, nil, nil, rec) end)
+      r.crafter:SetShown(false)
     end
     r.b1:SetShown(action ~= nil)
     if action then

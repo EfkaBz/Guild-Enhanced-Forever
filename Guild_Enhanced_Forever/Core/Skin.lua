@@ -384,15 +384,31 @@ local function templateTitle(f)
   return (tbl(f.TitleContainer) and tbl(f.TitleContainer.TitleText)) or tbl(f.TitleText)
 end
 
-local function setPortrait(f, texture)
-  if f.SetPortraitToAsset and pcall(f.SetPortraitToAsset, f, texture) then return true end
-  if f.SetPortraitTextureRaw and pcall(f.SetPortraitTextureRaw, f, texture) then return true end
+-- the addon's crest sits a little right of the ring's center: moved left once
+local PORTRAIT_NUDGE = -1.5
+local function nudge(f)
   local tex = (tbl(f.PortraitContainer) and tbl(f.PortraitContainer.portrait)) or tbl(f.portrait) or tbl(f.Portrait)
-  if tex and tex.SetTexture then
-    if SetPortraitToTexture and pcall(SetPortraitToTexture, tex, texture) then return true end
-    tex:SetTexture(texture)
-    return true
+  if f.portraitNudged or not (tex and tex.GetPoint and tex:GetNumPoints() > 0) then return end
+  f.portraitNudged = true
+  local pts = {}
+  for i = 1, tex:GetNumPoints() do pts[i] = { tex:GetPoint(i) } end
+  tex:ClearAllPoints()
+  for _, pt in ipairs(pts) do tex:SetPoint(pt[1], pt[2], pt[3], (pt[4] or 0) + PORTRAIT_NUDGE, pt[5] or 0) end
+end
+
+local function setPortrait(f, texture)
+  local ok = false
+  if f.SetPortraitToAsset and pcall(f.SetPortraitToAsset, f, texture) then ok = true
+  elseif f.SetPortraitTextureRaw and pcall(f.SetPortraitTextureRaw, f, texture) then ok = true
+  else
+    local tex = (tbl(f.PortraitContainer) and tbl(f.PortraitContainer.portrait)) or tbl(f.portrait) or tbl(f.Portrait)
+    if tex and tex.SetTexture then
+      if not (SetPortraitToTexture and pcall(SetPortraitToTexture, tex, texture)) then tex:SetTexture(texture) end
+      ok = true
+    end
   end
+  if ok then pcall(nudge, f) end
+  return ok
 end
 S.SetPortrait = setPortrait
 
