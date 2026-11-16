@@ -294,50 +294,72 @@ mev:SetScript("OnEvent", function(_, event, msg, author)
 end)
 
 -- Options ------------------------------------------------------------------------------------------------
--- a window of its own in the addon's look (the game's portrait frame with the guild crest), in three
--- sections; every label is shown in full (check box on the left, label and explanation on the right)
-local OPT_W, PAD, INNER = 520, 16, 520 - 2 * 30
+-- a panel that unrolls over the guild window, from its header down, so it has the window's size;
+-- two columns of sections that fold and unfold with a click on their title (the game's +/- buttons)
+local PAD, GAP = 20, 12
 local opt
 
+-- guild window opacity, 25 to 100 (%): never so low that the window gets lost
+function ns.Opacity() return math.max(25, math.min(100, tonumber(ns.db and ns.db.opacity) or 100)) end
+function ns.ApplyOpacity(value)
+  local f = ns.frame
+  if not f or f.closing then return end
+  f:SetAlpha(math.max(25, math.min(100, value or ns.Opacity())) / 100)
+end
+
 local function buildOptions()
-  opt = S.Window("GuildEnhancedForeverOptions", UIParent, OPT_W, 400, L["Options"], "portrait")
-  opt:SetFrameStrata("DIALOG")
-  opt:SetToplevel(true)
+  local f = ns.frame
+  opt = CreateFrame("Frame", "GuildEnhancedForeverOptions", f)
+  opt:SetPoint("TOPLEFT", f.inset, "TOPLEFT")
+  opt:SetPoint("TOPRIGHT", f.inset, "TOPRIGHT")
+  opt.full = f:GetHeight() - 62
+  opt:SetHeight(opt.full)
+  opt:SetFrameLevel(f.body:GetFrameLevel() + 40)
+  opt:EnableMouse(true)
+  opt:EnableMouseWheel(true)
+  opt:SetScript("OnMouseWheel", function() end)
+  if opt.SetClipsChildren then pcall(opt.SetClipsChildren, opt, true) end
   opt:Hide()
-  S.Draggable(opt, opt.titleBar)
-  if not S.SetPortrait(opt, ns.ICON) then
-    local icon = opt:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(40, 40)
-    icon:SetPoint("TOPLEFT", 8, -6)
-    icon:SetTexture(ns.ICON)
+  local bg = opt:CreateTexture(nil, "BACKGROUND", nil, -8)
+  bg:SetAllPoints()
+  bg:SetColorTexture(0.04, 0.04, 0.04, 0.97)
+  S.Card(opt, 6, 0.6)
+
+  local title = S.Text(opt, 16, "gold")
+  title:SetPoint("TOPLEFT", PAD, -14)
+  title:SetText(L["Options"])
+  local sub = S.Text(opt, 11, "muted")
+  sub:SetPoint("LEFT", title, "RIGHT", 14, -1)
+  sub:SetText(L["Click a title to fold or unfold its section."])
+
+  opt.checks, opt.drops, opt.pending = {}, {}, {}
+  local W = f:GetWidth() - 16
+  local colW = math.floor((W - 3 * PAD) / 2)
+  local fold = ns.db.optFold or {}
+  ns.db.optFold = fold
+  local last = {} -- column -> last body (the next section hangs under it)
+
+  -- a section: its title, then a body filled by fill(body, width), which returns its height
+  local function section(col, key, text, fill)
+    local h = S.Section(opt, text)
+    h:SetWidth(colW)
+    if last[col] then
+      h:SetPoint("TOPLEFT", last[col], "BOTTOMLEFT", 0, -GAP)
+    else
+      h:SetPoint("TOPLEFT", PAD + col * (colW + PAD), -48)
+    end
+    local body = CreateFrame("Frame", nil, opt)
+    body:SetWidth(colW)
+    body:SetPoint("TOPLEFT", h, "BOTTOMLEFT", 0, -8)
+    local height = fill(body, colW)
+    body:SetHeight(height)
+    S.Collapsible(h, body, height, function() return fold[key] ~= false end, function(on) fold[key] = on end)
+    last[col] = body
   end
-  opt.close:SetScript("OnClick", function() opt:Hide() end)
-  tinsert(UISpecialFrames, "GuildEnhancedForeverOptions") -- Escape closes it
 
-  opt.sub = S.Text(opt, 12, "dim")
-  opt.sub:SetPoint("TOPLEFT", 66, -32)
-  opt.sub:SetText(L["Notify me about:"])
-
-  local card = CreateFrame("Frame", nil, opt)
-  card:SetPoint("TOPLEFT", 14, -62)
-  card:SetPoint("BOTTOMRIGHT", -14, 52)
-  S.Card(card, 8)
-  opt.card = card
-  opt.checks = {}
-  opt.drops = {}
-  opt.pending = {}
-
-  local y = 12
-  local function section(text)
-    local h = S.Section(card, text)
-    h:SetPoint("TOPLEFT", PAD, -y)
-    h:SetPoint("TOPRIGHT", -PAD, -y)
-    y = y + 30
-  end
   -- a check box with its full label; hint: an explanation under the label; x, w: its column
-  local function check(key, label, hint, x, w)
-    x, w = x or PAD, w or (INNER - PAD)
-    local c = S.Check(card, label, 18)
+  local function check(parent, y, key, label, hint, x, w)
+    local c = S.Check(parent, label, 18)
     c:SetPoint("TOPLEFT", x, -y)
     c.text:SetFontObject(GameFontHighlight)
     c.text:SetWidth(w - 30)
@@ -347,7 +369,7 @@ local function buildOptions()
     opt.checks[#opt.checks + 1] = c
     local h = 26
     if hint then
-      local t = S.Text(card, 11, "muted")
+      local t = S.Text(parent, 11, "muted")
       t:SetPoint("TOPLEFT", c.text, "BOTTOMLEFT", 0, -3)
       t:SetWidth(w - 30)
       t:SetWordWrap(true)
@@ -356,111 +378,148 @@ local function buildOptions()
     end
     return h
   end
-
-  section(L["Notifications"])
-  y = y + check("toast", L["Pop-ups"], L["Off: the notifications go to the chat frame."])
-  y = y + check("sound", L["Sounds"])
-  y = y + check("noCombat", L["Not during combat"], L["During a fight the notifications go to the chat frame."]) + 4
-  -- display: two columns of a label above a menu
-  local colW = math.floor((INNER - PAD) / 2)
-  local function choice(key, label, options, col)
-    local x = PAD + 4 + col * colW
-    local t = S.Text(card, 12, "text")
+  -- a label above a menu
+  local function choice(parent, y, x, w, key, label, options)
+    local t = S.Text(parent, 12, "text")
     t:SetFontObject(GameFontHighlight)
     t:SetPoint("TOPLEFT", x, -y)
     t:SetText(label)
-    local d = S.Dropdown(card, colW - 24, options, function() return opt.pending[key] end, function(v)
+    local d = S.Dropdown(parent, w, options, function() return opt.pending[key] end, function(v)
       opt.pending[key] = v
-    end, colW - 24)
+    end, w)
     d:SetPoint("TOPLEFT", x - 2, -(y + 18))
     opt.drops[#opt.drops + 1] = d
   end
   local function secs(n) return { n, L["%d seconds"]:format(n) } end
-  choice("toastTime", L["Display time"], { secs(5), secs(10), secs(15), secs(20), secs(30), secs(60),
-    { 0, L["Until closed"] } }, 0)
-  choice("toastPos", L["Position"], { { "top", L["Top of the screen"] }, { "middle", L["Middle of the screen"] },
-    { "bottom", L["Bottom of the screen"] } }, 1)
-  y = y + 50
-  choice("toastScale", L["Size"], { { 0.8, "80 %" }, { 0.9, "90 %" }, { 1, "100 %" }, { 1.1, "110 %" },
-    { 1.25, "125 %" }, { 1.5, "150 %" } }, 0)
-  choice("toastMax", L["Shown at once"], { { 1, "1" }, { 2, "2" }, { 3, "3" }, { 4, "4" }, { 5, "5" }, { 6, "6" } }, 1)
-  y = y + 50
-  local hint = S.Text(card, 11, "muted")
-  hint:SetPoint("TOPLEFT", PAD + 4, -y)
-  hint:SetWidth(INNER - PAD - 130)
-  hint:SetWordWrap(true)
-  hint:SetText(L["The time is doubled for a notification with buttons."])
-  opt.test = S.Button(card, L["Test"], 110, 22, function()
-    -- shown with the choices of this window, even before saving
-    local o = ns.db.notify or {}
-    ns.db.notify = o
-    local saved = { toast = o.toast }
-    for k, v in pairs(opt.pending) do saved[k] = o[k]; o[k] = v end
-    o.toast = true
-    ns.Notify({ title = L["Options"], text = L["This is how your notifications will look."] })
-    for k in pairs(opt.pending) do o[k] = saved[k] end
-    o.toast = saved.toast
+
+  section(0, "notify", L["Notifications"], function(b, w)
+    local y = 0
+    y = y + check(b, y, "toast", L["Pop-ups"], L["Off: the notifications go to the chat frame."], 0, w)
+    y = y + check(b, y, "sound", L["Sounds"], nil, 0, w)
+    y = y + check(b, y, "noCombat", L["Not during combat"], L["During a fight the notifications go to the chat frame."], 0, w) + 6
+    local half = math.floor(w / 2)
+    choice(b, y, 4, half - 24, "toastTime", L["Display time"], { secs(5), secs(10), secs(15), secs(20), secs(30),
+      secs(60), { 0, L["Until closed"] } })
+    choice(b, y, half + 4, half - 24, "toastPos", L["Position"], { { "top", L["Top of the screen"] },
+      { "middle", L["Middle of the screen"] }, { "bottom", L["Bottom of the screen"] } })
+    y = y + 50
+    choice(b, y, 4, half - 24, "toastScale", L["Size"], { { 0.8, "80 %" }, { 0.9, "90 %" }, { 1, "100 %" },
+      { 1.1, "110 %" }, { 1.25, "125 %" }, { 1.5, "150 %" } })
+    choice(b, y, half + 4, half - 24, "toastMax", L["Shown at once"], { { 1, "1" }, { 2, "2" }, { 3, "3" },
+      { 4, "4" }, { 5, "5" }, { 6, "6" } })
+    y = y + 52
+    local hint = S.Text(b, 11, "muted")
+    hint:SetPoint("TOPLEFT", 4, -y)
+    hint:SetWidth(w - 130)
+    hint:SetWordWrap(true)
+    hint:SetText(L["The time is doubled for a notification with buttons."])
+    opt.test = S.Button(b, L["Test"], 110, 22, function()
+      -- shown with the choices of this panel, even before saving
+      local o = ns.db.notify or {}
+      ns.db.notify = o
+      local saved = { toast = o.toast }
+      for k, v in pairs(opt.pending) do if k ~= "opacity" then saved[k] = o[k]; o[k] = v end end
+      o.toast = true
+      ns.Notify({ title = L["Options"], text = L["This is how your notifications will look."] })
+      for k in pairs(opt.pending) do if k ~= "opacity" then o[k] = saved[k] end end
+      o.toast = saved.toast
+    end)
+    opt.test:SetPoint("TOPRIGHT", 0, -(y - 2))
+    return y + math.max(26, math.ceil(hint:GetStringHeight()) + 4)
   end)
-  opt.test:SetPoint("TOPRIGHT", -PAD, -(y - 2))
-  y = y + math.max(26, math.ceil(hint:GetStringHeight()) + 8) + 6
 
-  section(L["Guildmates"])
-  y = y + check("favOnline", L["Favorites"], L["When a favorite guildmate comes online (right-click a member: Favorite)."])
-  y = y + check("mention", L["Mentions"], L["When your name is written in the guild chat."])
-  local kw = S.Text(card, 12, "text")
-  kw:SetFontObject(GameFontHighlight)
-  kw:SetPoint("TOPLEFT", PAD + 4, -(y + 4))
-  kw:SetText(L["Other words"])
-  opt.keywords = S.EditBox(card, INNER - PAD - 20, 24, L["raid, heal, tank..."])
-  opt.keywords:SetPoint("TOPLEFT", PAD + 4, -(y + 22))
-  opt.keywords:SetMaxLetters(120)
-  local kwHint = S.Text(card, 11, "muted")
-  kwHint:SetPoint("TOPLEFT", opt.keywords, "BOTTOMLEFT", 0, -4)
-  kwHint:SetWidth(INNER - PAD - 20)
-  kwHint:SetWordWrap(true)
-  kwHint:SetText(L["Also notify for these words (separated by commas)."])
-  y = y + 22 + 24 + 6 + math.ceil(kwHint:GetStringHeight()) + 14
+  section(0, "window", L["Guild window"], function(b, w)
+    local label = S.Text(b, 12, "text")
+    label:SetFontObject(GameFontHighlight)
+    label:SetPoint("TOPLEFT", 4, 0)
+    opt.opacityLabel = label
+    opt.opacity = S.Slider(b, w - 40, 25, 100, 1, function(v)
+      opt.pending.opacity = v
+      label:SetText(string.format(L["Opacity: %d %%"], v))
+      ns.ApplyOpacity(v) -- seen at once on the window
+    end)
+    opt.opacity:SetPoint("TOPLEFT", 12, -24)
+    local hint = S.Text(b, 11, "muted")
+    hint:SetPoint("TOPLEFT", 4, -56)
+    hint:SetWidth(w - 8)
+    hint:SetWordWrap(true)
+    hint:SetText(L["25 = see-through, 100 = fully opaque."])
+    return 56 + math.ceil(hint:GetStringHeight()) + 4
+  end)
 
-  section(L["Guild activity"])
-  local items = { { "events", L["Events"] }, { "lfg", L["Group finder"] }, { "crafts", L["Craft requests"] },
-    { "board", L["Announcements"] }, { "anniv", L["Anniversaries"] } }
-  for i, it in ipairs(items) do
-    local col = (i - 1) % 2
-    check(it[1], it[2], nil, PAD + col * colW, colW)
-    if col == 1 or i == #items then y = y + 28 end
-  end
-  y = y + 6
+  section(1, "mates", L["Guildmates"], function(b, w)
+    local y = 0
+    y = y + check(b, y, "favOnline", L["Favorites"], L["When a favorite guildmate comes online (right-click a member: Favorite)."], 0, w)
+    y = y + check(b, y, "mention", L["Mentions"], L["When your name is written in the guild chat."], 0, w)
+    local kw = S.Text(b, 12, "text")
+    kw:SetFontObject(GameFontHighlight)
+    kw:SetPoint("TOPLEFT", 4, -(y + 4))
+    kw:SetText(L["Other words"])
+    opt.keywords = S.EditBox(b, w - 20, 24, L["raid, heal, tank..."])
+    opt.keywords:SetPoint("TOPLEFT", 4, -(y + 22))
+    opt.keywords:SetMaxLetters(120)
+    local kwHint = S.Text(b, 11, "muted")
+    kwHint:SetPoint("TOPLEFT", opt.keywords, "BOTTOMLEFT", 0, -4)
+    kwHint:SetWidth(w - 20)
+    kwHint:SetWordWrap(true)
+    kwHint:SetText(L["Also notify for these words (separated by commas)."])
+    return y + 22 + 24 + 6 + math.ceil(kwHint:GetStringHeight()) + 4
+  end)
 
-  opt:SetHeight(62 + y + 52)
+  section(1, "activity", L["Guild activity"], function(b, w)
+    local items = { { "events", L["Events"] }, { "lfg", L["Group finder"] }, { "crafts", L["Craft requests"] },
+      { "board", L["Announcements"] }, { "anniv", L["Anniversaries"] } }
+    local half, y = math.floor(w / 2), 0
+    for i, it in ipairs(items) do
+      local col = (i - 1) % 2
+      check(b, y, it[1], it[2], nil, col * half, half)
+      if col == 1 or i == #items then y = y + 28 end
+    end
+    return y
+  end)
 
   opt.save = S.Button(opt, L["Save"], 140, 26, function()
     local o = ns.db.notify or {}
     ns.db.notify = o
     for _, c in ipairs(opt.checks) do o[c.key] = c:GetChecked() and true or false end
     o.keywords = ns.Net.Clean(strtrim(opt.keywords:GetText() or ""))
-    for k, v in pairs(opt.pending) do o[k] = v end
-    opt:Hide()
+    for k, v in pairs(opt.pending) do
+      if k == "opacity" then ns.db.opacity = v else o[k] = v end
+    end
+    ns.CloseOptions(true)
   end, "primary")
-  opt.save:SetPoint("BOTTOMRIGHT", opt, "BOTTOM", -6, 16)
-  opt.cancel = S.Button(opt, L["Cancel"], 140, 26, function() opt:Hide() end)
-  opt.cancel:SetPoint("BOTTOMLEFT", opt, "BOTTOM", 6, 16)
+  opt.save:SetPoint("BOTTOMRIGHT", opt, "BOTTOM", -6, 14)
+  opt.cancel = S.Button(opt, L["Cancel"], 140, 26, function() ns.CloseOptions() end)
+  opt.cancel:SetPoint("BOTTOMLEFT", opt, "BOTTOM", 6, 14)
 end
 
-function ns.CloseOptions() if opt then opt:Hide() end end
+-- saved: the new opacity stays; otherwise the saved one comes back
+function ns.CloseOptions(saved)
+  if not opt or not opt:IsShown() then return end
+  S.StopTween(opt)
+  opt:SetHeight(opt.full)
+  opt:Hide()
+  if not saved then ns.ApplyOpacity() end
+end
 
+-- the Options button opens and closes the panel
 function ns.OpenOptions()
+  if not ns.frame or not ns.frame:IsShown() then ns.Show() end
   if not opt then buildOptions() end
+  if opt:IsShown() then ns.CloseOptions() return end
   S.FormDismiss()
+  S.CloseMenu(true)
   for _, c in ipairs(opt.checks) do c:SetChecked(ns.NotifyOpt(c.key) and true or false) end
   opt.keywords:SetText(ns.NotifyOpt("keywords") or "")
+  wipe(opt.pending)
   for _, k in ipairs({ "toastTime", "toastPos", "toastScale", "toastMax" }) do opt.pending[k] = ns.NotifyOpt(k) end
   for _, d in ipairs(opt.drops) do d:Refresh() end
-  opt:ClearAllPoints()
-  if ns.frame and ns.frame:IsShown() then
-    opt:SetPoint("TOPRIGHT", ns.frame, "TOPLEFT", -4, 0)
-  else
-    opt:SetPoint("CENTER", UIParent, "CENTER", 0, 60)
-  end
+  opt.opacity:SetValue(ns.Opacity())
+  opt.pending.opacity = ns.Opacity()
+  opt.opacityLabel:SetText(string.format(L["Opacity: %d %%"], ns.Opacity()))
   opt:Show()
   opt:Raise()
+  -- unrolls from the header down
+  opt:SetHeight(1)
+  S.Tween(opt, { dur = 0.22, from = 1, to = opt.full, set = function(v) opt:SetHeight(math.max(1, v)) end })
 end

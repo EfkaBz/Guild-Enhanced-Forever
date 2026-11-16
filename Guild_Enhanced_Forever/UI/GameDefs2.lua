@@ -223,7 +223,8 @@ end
 -- each player places his fleet (at random, "Shuffle" until the first shot); shots alternate. The one
 -- who is shot at answers: miss, hit, sunk, or all sunk (the shooter wins).
 do
-  local G = { id = "ship", name = "Battleship", desc = "Sink the enemy fleet first.",
+  -- noWatch: each side only knows its own fleet, a spectator could not follow
+  local G = { id = "ship", name = "Battleship", desc = "Sink the enemy fleet first.", noWatch = true,
     icon = { "Interface\\Icons\\INV_Misc_Spyglass_03", "Interface\\Icons\\INV_Misc_Spyglass_02" } }
   local N = 8
   local FLEET = { 4, 3, 3, 2, 2 }
@@ -481,6 +482,7 @@ do
   local G = { id = "quiz", name = "WoW quiz", desc = "Eight questions about Azeroth and its lore.",
     icon = { "Interface\\Icons\\INV_Misc_Book_07", "Interface\\Icons\\INV_Misc_Book_09" } }
   local ROUNDS = 8
+  local TIME = 10 -- seconds to answer a question; past it, the answer counts as wrong
   -- Answers come from the client when it can (instance, zone, class and race names are then in the
   -- player's language); characters are translated in the locales.
   local MAPS = {
@@ -610,6 +612,32 @@ do
     { "Who is the child king of Stormwind?", "char", "Anduin Wrynn", "Varian Wrynn", "Bolvar Fordragon", "Magni Bronzebeard" },
     { "Which Firelord did the Dark Iron dwarves summon?", "char", "Ragnaros", "Hakkar", "Deathwing", "C'Thun" },
     { "Who was Medivh's apprentice?", "char", "Khadgar", "Kel'Thuzad", "Jaina Proudmoore", "Aegwynn" },
+    { "Where does Vaelastrasz the Corrupt await?", "map", 469 },
+    { "Where does the Prophet Skeram preach?", "map", 531 },
+    { "Where does the abomination Patchwerk wait?", "map", 533 },
+    { "Where does High Priestess Arlokk serve Hakkar?", "map", 309 },
+    { "Where does Ramstein the Gorger guard the slaughterhouse?", "map", 329 },
+    { "Where does Herod, the Scarlet Champion, train?", "map", 189 },
+    { "In which zone is the city of Orgrimmar?", "zone", 1411 },
+    { "In which zone is the city of Thunder Bluff?", "zone", 1412 },
+    { "In which zone is the Crossroads?", "zone", 1413 },
+    { "In which zone is the town of Darkshire?", "zone", 1431 },
+    { "In which zone is the town of Lakeshire?", "zone", 1433 },
+    { "In which zone is Sentinel Hill?", "zone", 1436 },
+    { "In which zone is the druid town of Nighthaven?", "zone", 1450 },
+    { "What class is Khadgar?", "class", "MAGE" },
+    { "What class is Tyrande Whisperwind?", "class", "PRIEST" },
+    { "What class is Varian Wrynn?", "class", "WARRIOR" },
+    { "Of which race is Thrall?", "race", 2 },
+    { "Of which race is Magni Bronzebeard?", "race", 3 },
+    { "Of which race is Mekgineer Thermaplugg?", "race", 7 },
+    { "Who is the brother of Magni Bronzebeard?", "char", "Muradin Bronzebeard", "Dagran Thaurissan", "Varian Wrynn", "Khadgar" },
+    { "Which Aspect leads the blue dragonflight?", "char", "Malygos", "Deathwing", "Ragnaros", "Medivh" },
+    { "Who was Medivh's mother?", "char", "Aegwynn", "Jaina Proudmoore", "Tyrande Whisperwind", "Sylvanas Windrunner" },
+    { "Which orc shaman became the first Lich King?", "char", "Ner'zhul", "Gul'dan", "Thrall", "Kel'Thuzad" },
+    { "Which tauren chieftain was Thrall's friend and ally?", "char", "Cairne Bloodhoof", "Vol'jin", "Ner'zhul", "Magni Bronzebeard" },
+    { "Who killed his father, King Terenas?", "char", "Arthas Menethil", "Varian Wrynn", "Anduin Wrynn", "Bolvar Fordragon" },
+    { "Who rules the Dark Iron dwarves from Shadowforge City?", "char", "Dagran Thaurissan", "Magni Bronzebeard", "Muradin Bronzebeard", "Ragnaros" },
   }
   -- question, right answer, three wrong ones
   local TRIVIA = {
@@ -627,8 +655,14 @@ do
     { "How many bosses are there in Blackwing Lair?", "8", "6", "10", "7" },
     { "How many bosses are there in Naxxramas?", "15", "13", "12", "17" },
     { "In which year was World of Warcraft released?", "2004", "2003", "2005", "2006" },
+    { "How many players in a Warsong Gulch team?", "10", "15", "20", "5" },
+    { "How many players per team in Alterac Valley?", "40", "20", "30", "15" },
+    { "How many bosses are there in the Temple of Ahn'Qiraj?", "9", "8", "10", "12" },
+    { "How many talent points does a level 60 character have?", "51", "50", "60", "41" },
+    { "At what level do you get your first talent point?", "10", "5", "12", "15" },
+    { "How many talent trees does each class have?", "3", "2", "4", "5" },
   }
-  local qIcon, qText, feedback, scoreText
+  local qIcon, qText, feedback, scoreText, timerBar, timerText
   local answers = {}
 
   -- the questions of a match: { text, icon, options = {4}, right = index }. Every random draw only
@@ -698,6 +732,8 @@ do
     end
     feedback:SetText("")
     scoreText:SetText(string.format("%d  -  %d", m.pts[1], m.pts[2]))
+    m.deadline = GetTime() + TIME
+    timerBar:Show()
     ns.GameRefreshStatus()
   end
 
@@ -713,7 +749,8 @@ do
     end
     if m.myPick == q.right then m.pts[1] = m.pts[1] + 1 end
     if m.oppPick == q.right then m.pts[2] = m.pts[2] + 1 end
-    feedback:SetText(m.myPick == q.right and ("|cff1eff00" .. L["Right!"] .. "|r") or ("|cffff2020" .. L["Wrong"] .. "|r"))
+    feedback:SetText(m.myPick == q.right and ("|cff1eff00" .. L["Right!"] .. "|r")
+      or ("|cffff2020" .. (m.myPick == 0 and L["Time's up!"] or L["Wrong"]) .. "|r"))
     scoreText:SetText(string.format("%d  -  %d", m.pts[1], m.pts[2]))
     PlaySound(SOUNDKIT and (m.myPick == q.right and SOUNDKIT.IG_QUEST_LIST_COMPLETE or SOUNDKIT.U_CHAT_SCROLL_BUTTON) or 1115)
     if m.round >= ROUNDS then
@@ -740,7 +777,7 @@ do
         if m and not m.over and m.game == G.id and m.myPick == nil then ns.GameMove("A:" .. m.round .. ":" .. self.slot) end
       end)
       b.slot = i
-      b:SetPoint("TOP", (i % 2 == 1) and -122 or 122, -160 - math.floor((i - 1) / 2) * 50)
+      b:SetPoint("TOP", (i % 2 == 1) and -122 or 122, -174 - math.floor((i - 1) / 2) * 50)
       b.opp = b:CreateTexture(nil, "OVERLAY")
       b.opp:SetTexture(MEDIA .. "Dot")
       b.opp:SetSize(10, 10)
@@ -754,6 +791,33 @@ do
     feedback = S.Text(f, 14, "text")
     feedback:SetPoint("BOTTOM", 0, 8)
     feedback:SetJustifyH("CENTER")
+    -- countdown: a bar under the question that empties in TIME seconds; at 0 the answer is "none"
+    timerBar = S.ProgressBar(f, 10)
+    timerBar:SetPoint("TOP", 0, -150)
+    timerBar:SetWidth(470)
+    timerBar:SetMinMaxValues(0, TIME)
+    timerText = S.Text(timerBar, 11, "text")
+    timerText:SetPoint("LEFT", timerBar, "RIGHT", 8, 0)
+    timerBar:Hide()
+    -- (a frame of its own: the countdown goes on while the guild window is closed)
+    local clock = CreateFrame("Frame")
+    clock:SetScript("OnUpdate", function()
+      local m = ns.GameMatch()
+      if not (m and m.game == G.id and m.deadline) then return end
+      if m.over or m.myPick ~= nil then
+        timerBar:SetValue(0); timerText:SetText("")
+        return
+      end
+      local left = m.deadline - GetTime()
+      if left <= 0 then
+        m.deadline = nil
+        ns.GameMove("A:" .. m.round .. ":0")
+        return
+      end
+      timerBar:SetValue(left)
+      timerBar:SetColors(left > 5 and C.gold1 or left > 2.5 and C.warn or C.bad)
+      timerText:SetText(math.ceil(left) .. " s")
+    end)
     local legend = S.Text(f, 10, "muted")
     legend:SetPoint("BOTTOMRIGHT", -4, 4)
     legend:SetText(dotMark(P2) .. " " .. L["your opponent's answer"])
@@ -768,7 +832,8 @@ do
   function G.OnMove(m, data, isMine)
     local r, pick = data:match("^A:(%d+):(%d)$")
     r, pick = tonumber(r), tonumber(pick)
-    if not r or r ~= m.round or not pick or pick < 1 or pick > 4 then return end
+    -- pick 0: no answer in time
+    if not r or r ~= m.round or not pick or pick < 0 or pick > 4 then return end
     if isMine then
       if m.myPick then return end
       m.myPick = pick

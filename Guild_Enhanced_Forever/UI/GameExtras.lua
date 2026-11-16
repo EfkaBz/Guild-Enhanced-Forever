@@ -347,6 +347,30 @@ function ns.BuildTourneys(v)
     mid:SetColorTexture(color(C.rule))
     b.link = area:CreateTexture(nil, "BACKGROUND")
     b.link:SetColorTexture(color(C.ring, 0.5))
+    -- a match being played: a click watches it
+    b.eye = b:CreateTexture(nil, "OVERLAY")
+    b.eye:SetSize(14, 14)
+    b.eye:SetPoint("CENTER", b, "RIGHT", 0, 0)
+    b.eye:SetTexture("Interface\\Icons\\INV_Misc_Spyglass_02")
+    b.eye:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    b.eye:Hide()
+    b:EnableMouse(true)
+    b:SetScript("OnEnter", function(self)
+      if not self.watch then return end
+      self:SetBorderColor(color(C.gold))
+      GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+      GameTooltip:AddLine(L["Watch this match"], color(C.gold))
+      GameTooltip:AddLine(L["Click to follow the match live, if the two players are playing it now."], 1, 1, 1, true)
+      GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function(self)
+      if self.watch then self:SetBorderColor(color(self.border or C.rule)) end
+      GameTooltip:Hide()
+    end)
+    b:SetScript("OnMouseUp", function(self)
+      local w = self.watch
+      if w then ns.WatchMatch(w[1], w[2], w[3]) end
+    end)
     tv.boxes[i] = b
     return b
   end
@@ -385,7 +409,7 @@ function ns.BuildTourneys(v)
     empty:SetShown(#list == 0)
     if not sel and list[1] then sel = list[1]; tv.selected = sel.id end
 
-    for _, b in ipairs(tv.boxes) do b:Hide(); b.link:Hide() end
+    for _, b in ipairs(tv.boxes) do b:Hide(); b.link:Hide(); b.eye:Hide(); b.watch = nil end
     champion:SetText("")
     for _, b in ipairs({ bJoin, bStart, bPlay, bDel }) do b:Hide() end
     info:SetText("")
@@ -453,7 +477,15 @@ function ns.BuildTourneys(v)
         b.a:SetText(who(mt.a, not mt.byeA))
         b.b:SetText(who(mt.b, not mt.byeB))
         local mine = (mt.a == me or mt.b == me) and not mt.w
-        b:SetBorderColor(color(mine and C.gold or mt.w and C.ring or C.rule))
+        b.border = mine and C.gold or mt.w and C.ring or C.rule
+        b:SetBorderColor(color(b.border))
+        -- two players, no winner yet, both online: the match can be watched
+        local def = ns.gameDefs[sel.game]
+        local ma, mb = mt.a and ns.byName[mt.a], mt.b and ns.byName[mt.b]
+        if not mine and not mt.w and ma and mb and (ma.online or mb.online) and def and not def.noWatch then
+          b.watch = { sel.game, mt.a, mt.b }
+          b.eye:Show()
+        end
         b:Show()
         if r > 1 then
           b.link:ClearAllPoints()

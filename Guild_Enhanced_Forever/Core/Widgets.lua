@@ -169,6 +169,39 @@ function S.Dropdown(parent, width, options, getValue, onSelect, menuWidth)
   return b
 end
 
+-- Slider -------------------------------------------------------------------
+-- the game's options slider (min and max under the ends); onChange(value) with whole steps
+local sliders = 0
+function S.Slider(parent, width, lo, hi, step, onChange)
+  sliders = sliders + 1
+  local name = "GuildEnhancedForeverSlider" .. sliders
+  local ok, s = pcall(CreateFrame, "Slider", name, parent, "OptionsSliderTemplate")
+  if not ok or not s then
+    s = CreateFrame("Slider", name, parent)
+    s:SetOrientation("HORIZONTAL")
+    s:SetHeight(17)
+    S.Backdrop(s, { bgFile = "Interface\\Buttons\\UI-SliderBar-Background",
+      edgeFile = "Interface\\Buttons\\UI-SliderBar-Border", tile = true, tileSize = 8, edgeSize = 8,
+      insets = { left = 3, right = 3, top = 6, bottom = 6 } })
+    s:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+  end
+  s:SetWidth(width)
+  s:SetMinMaxValues(lo, hi)
+  s:SetValueStep(step or 1)
+  if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
+  local low = _G[name .. "Low"] or S.Tbl(s.Low)
+  local high = _G[name .. "High"] or S.Tbl(s.High)
+  local text = _G[name .. "Text"] or S.Tbl(s.Text)
+  if low then low:SetText(lo) end
+  if high then high:SetText(hi) end
+  if text then text:SetText("") end
+  s:SetScript("OnValueChanged", function(_, v)
+    v = math.floor(v / (step or 1) + 0.5) * (step or 1)
+    if onChange then onChange(v) end
+  end)
+  return s
+end
+
 -- Context menu ---------------------------------------------------------------
 -- one shared menu in the game's drop-down list style: items { text, func, disabled, checked,
 -- color, title, separator }

@@ -6,6 +6,12 @@
 --   H|ver        guild: hello (who has the addon?)      P|ver       whisper: I have it
 --   C|id|game|r  whisper: challenge (r = rematch)        Y|id / N|id|reason   accept / decline
 --   M|id|data    whisper: a move                          F|id        whisper: I leave the match
+-- Watching a match (tournaments): the spectator asks one of the two players, who sends the moves
+-- played so far, then every new move, all seen from that player's side:
+--   W|game|opp   whisper: let me watch your match against opp     U|id   whisper: I stop watching
+--   S|id|game|first|s1|s2   the match (first: 1/0, the series score)   X   whisper: not playing it
+--   L|id|f d;f d...  moves so far (f: 1 = the player's, 0 = the opponent's)
+--   V|id|f|data  a new move                                E|id|result   the match ended (left, gone)
 -- A match against the bot (practice) never touches the network: the game's BotMove(match)
 -- picks the bot's moves, played after a short "thinking" delay.
 local _, ns = ...
@@ -55,13 +61,19 @@ end
 local users = {}          -- short name -> { full, t }
 local replied = {}        -- short name -> last presence answer
 local lastHello = 0
-local match               -- { id, game, opp, oppShort, first, over, result, score = { me, opp }, bot }
+local match               -- { id, game, opp, oppShort, first, over, result, score = { me, opp }, bot, watch, moveLog }
+-- (watch: a match of two others, seen from the side of the player named in watch; nothing is sent)
 local outgoing            -- { id, game, opp, t }
 local invites = {}        -- { id, game, from, rematch, t }
 local page, ui = nil, {}
 local selectedGame, selectedOpp
 
 local function newId() return tostring(math.random(100000, 999999)) end
+-- a match of mine against a guildmate, still going (the bot and watched matches don't count)
+local function live(m) return m and not m.over and not m.bot and not m.watch end
+local watchers = {}       -- short name -> full name: who watches my match
+local stopWatching        -- (below)
+local MAX_WATCHERS = 6
 local function online(name)
   local m = ns.byName[name]
   return m and m.online
@@ -72,7 +84,7 @@ function ns.GameMe() return me end
 
 -- status line, badge --------------------------------------------------------------------------------------
 local function myTurn()
-  if not match or match.over then return false end
+  if not match or match.over or match.watch then return false end
   local def = ns.gameDefs[match.game]
   return def and def.IsMyTurn and def.IsMyTurn(match) or false
 end
@@ -82,6 +94,10 @@ local botTurn
 
 function ns.GameRefreshStatus()
   if match and match.bot then botTurn() end
+  if match and match.watch then
+    if refreshPage then refreshPage() end
+    return
+  end
   if myTurn() and not (page and page:IsVisible()) then ns.SetTabBadge(PAGE, "!") end
   if not myTurn() then ns.SetTabBadge(PAGE, "") end
   if refreshPage then refreshPage() end
@@ -108,9 +124,11 @@ end
 local function startMatch(id, game, opp, first, bot)
   local def = ns.gameDefs[game]
   if not def then return end
+  if match and match.watch and not match.over then send("U|" .. match.id, "WHISPER", match.watch) end
+  wipe(watchers)
   local same = match and match.oppShort == short(opp) and match.game == game and (match.bot or false) == (bot or false)
   local score = same and match.score or { 0, 0 }
-  match = { id = id, game = game, opp = opp, oppShort = short(opp), first = first, score = score, bot = bot }
+  match = { id = id, game = game, opp = opp, oppShort = short(opp), first = first, score = score, bot = bot, moveLog = {} }
   outgoing = nil
   ns.OpenPage(PAGE)
   for _, d in ipairs(ns.gameOrder) do if d.frame then d.frame:SetShown(d == def) end end
@@ -121,12 +139,39 @@ local function startMatch(id, game, opp, first, bot)
   ns.GameRefreshStatus()
 end
 
+-- to everyone watching my match
+local function relay(msg)
+  for _, full in pairs(watchers) do send(msg, "WHISPER", full) end
+end
+
 local RESULT_TEXT = { win = "Victory!", lose = "Defeat", draw = "Draw", left = "Your opponent left the game.",
   gone = "Your opponent logged out." }
 
 function ns.GameEnd(result)
   if not match or match.over then return end
   match.over, match.result = true, result
+  if match.watch then
+    -- a watched match: who won, nothing recorded
+    local r = ui.result
+    local winner = (result == "win" or result == "left" or result == "gone") and match.watchShort
+      or result == "lose" and match.oppShort or nil
+    r.text:SetText(winner and string.format(L["%s wins!"], winner) or L["Draw"])
+    r.text:SetTextColor(color(winner and C.gold or C.text))
+    r.burst:SetVertexColor(1, 0.82, 0, 0.8)
+    r:Show()
+    S.Tween(r, { dur = 0.6, from = 0, to = 1, ease = "outBack", set = function(v, p)
+      r:SetAlpha(math.min(1, p * 3))
+      r.text:SetTextHeight(math.max(1, 34 * (0.5 + 0.5 * v)))
+      r.burst:SetSize(80 + 360 * p, 80 + 360 * p)
+      r.burst:SetAlpha(1 - p)
+    end })
+    if refreshPage then refreshPage() end
+    return
+  end
+  if not match.bot and next(watchers) then
+    relay("E|" .. match.id .. "|" .. result)
+    wipe(watchers)
+  end
   local st = ns.db.gameStats or {}
   ns.db.gameStats = st
   st[match.game] = st[match.game] or { w = 0, l = 0, d = 0 }
@@ -164,8 +209,12 @@ end
 
 -- a move of mine: sent to the opponent and played here
 function ns.GameMove(data)
-  if not match or match.over then return end
-  if not match.bot then send("M|" .. match.id .. "|" .. data, "WHISPER", match.opp) end
+  if not match or match.over or match.watch then return end
+  if not match.bot then
+    send("M|" .. match.id .. "|" .. data, "WHISPER", match.opp)
+    match.moveLog[#match.moveLog + 1] = "1" .. data
+    relay("V|" .. match.id .. "|1|" .. data)
+  end
   ns.gameDefs[match.game].OnMove(match, data, true)
 end
 
@@ -188,19 +237,104 @@ end
 local botFirst = true
 function ns.PlayBot(game)
   if not ns.gameDefs[game] then return end
-  if match and not match.over and not match.bot then ns.Print(L["Finish your current game first."]) return end
+  if live(match) then ns.Print(L["Finish your current game first."]) return end
+  if match and match.watch then stopWatching() end
   if match and match.bot and match.game == game and match.over then botFirst = not botFirst end
   startMatch(newId(), game, L["Bot"], botFirst, true)
 end
 
 -- runs fn later only if the same match is still going
 function ns.GameLater(delay, fn)
-  local id = match and match.id
-  C_Timer.After(delay, function() if match and match.id == id then fn(match) end end)
+  local m = match
+  local id = m and m.id
+  if m then m.later = (m.later or 0) + 1 end
+  C_Timer.After(delay, function()
+    if m then m.later = m.later - 1 end
+    if match and match.id == id then fn(match) end
+  end)
+end
+
+-- Watching -------------------------------------------------------------------------------------------------
+-- the moves of a watched match are played one by one; a move waits while the game still has
+-- something to show (the end of a quiz round, a roll...): the replay keeps the game's own pace
+local replay = CreateFrame("Frame")
+local replayWait = 0
+replay:SetScript("OnUpdate", function(_, e)
+  local m = match
+  if not (m and m.watch and m.queue and m.queue[1]) then return end
+  replayWait = replayWait - e
+  if replayWait > 0 or (m.later or 0) > 0 or m.over then return end
+  local item = table.remove(m.queue, 1)
+  local def = ns.gameDefs[m.game]
+  if item.result then
+    ns.GameEnd(item.result)
+  elseif def then
+    def.OnMove(m, item.data, item.mine)
+  end
+  replayWait = #m.queue > 6 and 0.05 or 0.15
+  if refreshPage then refreshPage() end
+end)
+
+local watchAsk -- { game, names = { full names to ask }, t }
+-- watch the match of two guildmates (tournament bracket): asks the first one, then the other
+function ns.WatchMatch(game, a, b)
+  local def = ns.gameDefs[game]
+  if not def or def.noWatch then ns.Print(L["This game cannot be watched."]) return end
+  if live(match) then ns.Print(L["Finish your current game first."]) return end
+  local names = {}
+  for _, n in ipairs({ a, b }) do
+    local m = ns.byName[short(n)]
+    if m and m.online then names[#names + 1] = { full = m.name or n, other = short(n == a and b or a) } end
+  end
+  if #names == 0 then ns.Print(L["These players are offline."]) return end
+  local ask = { game = game, names = names, step = 1 }
+  watchAsk = ask
+  local function try()
+    if watchAsk ~= ask then return end
+    local x = ask.names[ask.step]
+    if not x then
+      watchAsk = nil
+      ns.Print(L["This match is not being played right now."])
+      return
+    end
+    send("W|" .. game .. "|" .. x.other, "WHISPER", x.full)
+    C_Timer.After(5, function()
+      if watchAsk == ask and ask.names[ask.step] == x then ask.step = ask.step + 1; try() end
+    end)
+  end
+  ask.next = function() ask.step = ask.step + 1; try() end
+  try()
+  ns.Print(L["Asking to watch the match..."])
+end
+
+stopWatching = function()
+  if match and match.watch then
+    if not match.over then send("U|" .. match.id, "WHISPER", match.watch) end
+    match = nil
+    ns.SetTabBadge(PAGE, "")
+    if refreshPage then refreshPage() end
+  end
+end
+
+local function startWatch(sender, id, game, first, s1, s2)
+  local def = ns.gameDefs[game]
+  if not def or live(match) or outgoing then return end
+  if match and match.watch then stopWatching() end -- (another match was being watched)
+  local opp = watchAsk and watchAsk.names[watchAsk.step] and watchAsk.names[watchAsk.step].other or "?"
+  watchAsk = nil
+  local om = ns.byName[opp]
+  match = { id = id, game = game, opp = om and om.name or opp, oppShort = opp, first = first,
+    score = { tonumber(s1) or 0, tonumber(s2) or 0 }, watch = sender, watchShort = short(sender), queue = {} }
+  ns.OpenPage(PAGE)
+  for _, d in ipairs(ns.gameOrder) do if d.frame then d.frame:SetShown(d == def) end end
+  ui.result:Hide()
+  def.Start(match)
+  PlaySound(SOUNDKIT and SOUNDKIT.IG_QUEST_LIST_OPEN or 875)
+  refreshPage()
 end
 
 function ns.Challenge(game, opp, rematch)
-  if match and not match.over and not match.bot then ns.Print(L["Finish your current game first."]) return end
+  if live(match) then ns.Print(L["Finish your current game first."]) return end
   if not opp then return end
   local id = newId()
   outgoing = { id = id, game = game, opp = opp, t = GetTime() }
@@ -216,6 +350,7 @@ function ns.Challenge(game, opp, rematch)
 end
 
 local function leave()
+  if match and match.watch then stopWatching() return end
   if match and not match.over then
     if not match.bot then send("F|" .. match.id, "WHISPER", match.opp) end
     ns.GameEnd("lose")
@@ -324,7 +459,7 @@ ev:SetScript("OnEvent", function(_, event, prefix, msg, channel, sender)
   elseif kind == "C" then
     local id, game = f[2], f[3]
     if not ns.gameDefs[game] then return end
-    if (match and not match.over and not match.bot) or outgoing then
+    if live(match) or outgoing then
       send("N|" .. id .. "|busy", "WHISPER", sender)
       return
     end
@@ -341,19 +476,75 @@ ev:SetScript("OnEvent", function(_, event, prefix, msg, channel, sender)
       if refreshPage then refreshPage() end
     end
   elseif kind == "M" then
-    if match and not match.over and match.id == f[2] and match.oppShort == name then
+    if live(match) and match.id == f[2] and match.oppShort == name then
       -- the move may contain "|" (it never does in these games, but keep the rest whole)
       local data = msg:match("^M|[^|]*|(.*)$")
+      match.moveLog[#match.moveLog + 1] = "0" .. data
+      relay("V|" .. match.id .. "|0|" .. data)
       ns.gameDefs[match.game].OnMove(match, data, false)
     end
   elseif kind == "F" then
-    if match and not match.over and match.id == f[2] and match.oppShort == name then ns.GameEnd("left") end
+    if live(match) and match.id == f[2] and match.oppShort == name then ns.GameEnd("left") end
+  -- watching: the player's side
+  elseif kind == "W" then
+    local def = ns.gameDefs[f[2] or ""]
+    local count = 0
+    for _ in pairs(watchers) do count = count + 1 end
+    if live(match) and match.game == f[2] and match.oppShort == f[3] and def and not def.noWatch
+      and (watchers[name] or count < MAX_WATCHERS) then
+      watchers[name] = sender
+      send("S|" .. match.id .. "|" .. match.game .. "|" .. (match.first and 1 or 0) .. "|" .. match.score[1]
+        .. "|" .. match.score[2], "WHISPER", sender)
+      -- the moves so far, packed a few per message
+      local chunk = {}
+      local size = 0
+      for _, mv in ipairs(match.moveLog) do
+        if size + #mv > 200 then
+          send("L|" .. match.id .. "|" .. table.concat(chunk, ";"), "WHISPER", sender)
+          wipe(chunk); size = 0
+        end
+        chunk[#chunk + 1] = mv
+        size = size + #mv + 1
+      end
+      if chunk[1] then send("L|" .. match.id .. "|" .. table.concat(chunk, ";"), "WHISPER", sender) end
+    else
+      send("X", "WHISPER", sender)
+    end
+  elseif kind == "U" then
+    watchers[name] = nil
+  -- watching: the spectator's side
+  elseif kind == "X" then
+    local x = watchAsk and watchAsk.names[watchAsk.step]
+    if x and short(x.full) == name then watchAsk.next() end
+  elseif kind == "S" then
+    local x = watchAsk and watchAsk.names[watchAsk.step]
+    if x and short(x.full) == name and watchAsk.game == f[3] then startWatch(sender, f[2], f[3], f[4] == "1", f[5], f[6]) end
+  elseif kind == "L" then
+    if match and match.watch and match.id == f[2] and short(match.watch) == name then
+      local list = msg:match("^L|[^|]*|(.*)$") or ""
+      for item in list:gmatch("[^;]+") do
+        match.queue[#match.queue + 1] = { mine = item:sub(1, 1) == "1", data = item:sub(2) }
+      end
+    end
+  elseif kind == "V" then
+    if match and match.watch and match.id == f[2] and short(match.watch) == name then
+      match.queue[#match.queue + 1] = { mine = f[3] == "1", data = msg:match("^V|[^|]*|[^|]*|(.*)$") }
+    end
+  elseif kind == "E" then
+    if match and match.watch and match.id == f[2] and short(match.watch) == name then
+      match.queue[#match.queue + 1] = { result = f[3] }
+    end
   end
 end)
 
 -- opponent logged out
 ns.On("ROSTER", function()
-  if match and not match.over and not match.bot and not online(match.oppShort) then ns.GameEnd("gone") end
+  if live(match) and not online(match.oppShort) then ns.GameEnd("gone") end
+  if match and match.watch and not match.over and not online(match.watchShort) then
+    ns.Print(L["The match you were watching is no longer available."])
+    stopWatching()
+  end
+  for n in pairs(watchers) do if not online(n) then watchers[n] = nil end end
   if refreshPage then refreshPage() end
 end)
 
@@ -442,7 +633,7 @@ refreshPage = function()
     ns.SetClassIcon(r.icon, m.classFile)
     r.name:SetText(m.short)
     r.name:SetTextColor(ns.ClassColor(m.classFile))
-    r.lvl:SetText(match and not match.over and not match.bot and match.oppShort == m.short and L["playing"] or m.level)
+    r.lvl:SetText(live(match) and match.oppShort == m.short and L["playing"] or m.level)
     r.sel:SetShown(selectedOpp == m.short)
     r:Show()
   end
@@ -451,7 +642,7 @@ refreshPage = function()
   ui.none:SetShown(#list == 0)
   if selectedOpp and not users[selectedOpp] then selectedOpp = nil end
 
-  local busy = (match and not match.over and not match.bot) or outgoing
+  local busy = live(match) or outgoing
   ui.challenge:SetEnabled(selectedGame and selectedOpp and not busy and true or false)
   ui.challenge:SetText(outgoing and string.format(L["Waiting for %s..."], short(outgoing.opp)) or L["Challenge"])
 
@@ -474,14 +665,30 @@ refreshPage = function()
     end
     return
   end
-  local m = not match.bot and ns.byName[match.oppShort]
-  local oppName = m and ("|c" .. ns.ClassHex(m.classFile) .. m.short .. "|r")
-    or match.bot and ("|cffbbbbbb" .. match.oppShort .. "|r") or match.oppShort
-  ui.gameName:SetText(L[def.name])
-  ui.vs:SetText(string.format(L["You %s  %d - %d  %s"], def.Mark and def.Mark(match, true) or "",
-    match.score[1], match.score[2], oppName .. (def.Mark and (" " .. def.Mark(match, false)) or "")))
+  local function label(sn)
+    local mm = ns.byName[sn]
+    return mm and ("|c" .. ns.ClassHex(mm.classFile) .. mm.short .. "|r") or sn
+  end
+  local oppName = match.bot and ("|cffbbbbbb" .. match.oppShort .. "|r") or label(match.oppShort)
+  ui.gameName:SetText(L[def.name] .. (match.watch and ("  |cff999999(" .. L["watching"] .. ")|r") or ""))
+  if match.watch then
+    ui.vs:SetText(string.format("%s %s  %d - %d  %s", label(match.watchShort), def.Mark and def.Mark(match, true) or "",
+      match.score[1], match.score[2], oppName .. (def.Mark and (" " .. def.Mark(match, false)) or "")))
+  else
+    ui.vs:SetText(string.format(L["You %s  %d - %d  %s"], def.Mark and def.Mark(match, true) or "",
+      match.score[1], match.score[2], oppName .. (def.Mark and (" " .. def.Mark(match, false)) or "")))
+  end
   local status
-  if match.over then
+  if match.watch then
+    if match.over then
+      status = L["Match over"]
+    elseif match.queue and #match.queue > 3 then
+      status = "|cff999999" .. L["Catching up..."] .. "|r"
+    else
+      local turn = def.IsMyTurn and def.IsMyTurn(match)
+      status = string.format(L["%s to play"], turn and label(match.watchShort) or oppName)
+    end
+  elseif match.over then
     status = L[RESULT_TEXT[match.result] or "Draw"]
   elseif myTurn() then
     status = "|cffffd100" .. L["Your turn"] .. "|r"
@@ -489,10 +696,10 @@ refreshPage = function()
     status = string.format(L["Waiting for %s..."], oppName)
   end
   ui.status:SetText(status)
-  ui.pulse = myTurn()
-  ui.rematch:SetShown(match.over and (match.bot or online(match.oppShort)) and true or false)
+  ui.pulse = myTurn() and not match.watch
+  ui.rematch:SetShown(match.over and not match.watch and (match.bot or online(match.oppShort)) and true or false)
   ui.rematch:SetEnabled(not outgoing)
-  ui.leave:SetText(match.over and L["Close"] or L["Leave"])
+  ui.leave:SetText(match.watch and L["Stop watching"] or match.over and L["Close"] or L["Leave"])
 end
 
 local function build(p)
@@ -577,8 +784,10 @@ local function build(p)
   ui.buttons:SetPoint("BOTTOMLEFT", 16, 14)
   ui.buttons:SetPoint("BOTTOMRIGHT", -16, 14)
   ui.buttons:SetHeight(28)
-  ui.leave = S.Button(ui.buttons, L["Leave"], 110, 28, function()
-    if match and match.over then
+  ui.leave = S.Button(ui.buttons, L["Leave"], 130, 28, function()
+    if match and match.watch then
+      stopWatching()
+    elseif match and match.over then
       match = nil
       refreshPage()
     else

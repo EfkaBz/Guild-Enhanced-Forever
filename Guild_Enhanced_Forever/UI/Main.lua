@@ -175,12 +175,17 @@ local function build()
     local p, _, rp, x, y = self:GetPoint(1)
     ns.db.point = { p, rp, x, y }
   end)
-  -- the guild emblem: the addon icon in the round portrait
-  if not S.SetPortrait(f, ns.ICON) then
+  -- dragging puts the window back to full opacity: the chosen one comes back
+  f.titleBar:HookScript("OnDragStart", function() if ns.ApplyOpacity then ns.ApplyOpacity() end end)
+  -- the guild emblem (from the tabard) in the round portrait; the addon icon without a tabard
+  if S.SetPortrait(f, ns.ICON) then
+    ns.PortraitEmblem(f)
+  else
     local icon = f:CreateTexture(nil, "ARTWORK")
     icon:SetSize(40, 40)
     icon:SetPoint("TOPLEFT", 8, -6)
     icon:SetTexture(ns.ICON)
+    ns.GuildEmblem(f, "ARTWORK", 1, icon, icon)
   end
 
   -- header row under the title: counts on the left, buttons on the right
@@ -211,7 +216,8 @@ local function build()
   S.Tooltip(f.bug, { L["Report a bug"], L["Copy the link of the Discord server"] })
   f.options = S.Button(header, L["Options"], 90, 22, function() ns.OpenOptions() end)
   f.options:SetPoint("RIGHT", f.bug, "LEFT", -4, 0)
-  S.Tooltip(f.options, { L["Options"], L["Notifications: pop-ups, sounds, favorites, mentions."] })
+  S.Tooltip(f.options, { L["Options"], L["Notifications: pop-ups, sounds, favorites, mentions."],
+    L["Guild window: opacity."] })
 
   -- tabs: the spellbook's icon tabs along the right edge
   local items = {}
@@ -263,6 +269,7 @@ local function build()
     PlaySound(SOUNDKIT and SOUNDKIT.IG_CHARACTER_INFO_CLOSE or 840)
     S.CloseMenu(true)
     S.FormDismiss(f) -- the options sit against the window: they close with it
+    if ns.CloseOptions then ns.CloseOptions() end
   end)
 
   -- position
@@ -300,6 +307,7 @@ function ns.Show()
   end
   ns.ScanRoster()
   ns.RequestRoster()
+  if ns.RefreshEmblems then ns.RefreshEmblems() end
   ns.RequestGuildInfo()
   refreshGuildState()
   local wasShown = f:IsShown() and not reopening
@@ -315,6 +323,7 @@ function ns.Show()
     S.AnimateOpen(f, 0, -14)
     f.tabs:Cascade()
   end
+  if ns.ApplyOpacity then ns.ApplyOpacity() end
 end
 
 function ns.Hide()

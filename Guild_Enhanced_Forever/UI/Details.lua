@@ -49,6 +49,7 @@ local function buildEmpty(p)
   icon:SetTexture(ns.ICON)
   icon:SetSize(64, 64)
   icon:SetPoint("TOP", 0, -30)
+  ns.GuildEmblem(empty, "ARTWORK", 1, icon, icon, true) -- the guild emblem, or the addon icon without a tabard
   local halo = empty:CreateTexture(nil, "BACKGROUND")
   halo:SetTexture(S.MEDIA .. "Glow")
   halo:Hide()

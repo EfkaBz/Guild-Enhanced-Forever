@@ -2,7 +2,7 @@
 ## Title: Guild Enhanced Forever
 ## Notes: A complete replacement for the guild window (J), in the game's own style
 ## Author: Daeler
-## Version: 1.0.7
+## Version: 1.0.8
 ## IconTexture: Interface\AddOns\Guild_Enhanced_Forever\adds\icon
 ## X-Category: Guild
 ## Category: Daeler Addons
@@ -22,12 +22,14 @@ Locales\zhCN.lua
 Locales\zhTW.lua
 Core\Skin.lua
 Core\Widgets.lua
+Core\Emblem.lua
 Core\Core.lua
 Core\RankPicker.lua
 Core\SecureAsk.lua
 Core\Net.lua
 Core\Forms.lua
 Core\Notify.lua
+Core\WhatsNew.lua
 UI\Main.lua
 UI\Roster.lua
 UI\Details.lua
@@ -44,4 +46,5 @@ UI\Ranks.lua
 UI\Games.lua
 UI\GameDefs.lua
 UI\GameDefs2.lua
+UI\GameChess.lua
 UI\GameExtras.lua

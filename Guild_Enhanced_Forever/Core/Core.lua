@@ -482,6 +482,7 @@ ns.Queue = queue
 ev:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" then
     if arg1 == ADDON then
+      ns.freshInstall = GuildEnhancedForeverDB == nil -- (no "What's new" on a first install)
       GuildEnhancedForeverDB = GuildEnhancedForeverDB or {}
       for k, v in pairs(DEFAULTS) do
         if GuildEnhancedForeverDB[k] == nil then
@@ -549,6 +550,7 @@ SlashCmdList.GUILDENHANCEDFOREVER = function(msg)
     ns.Print("/gui blizzard — " .. L["J opens the game's guild window instead (toggle)"])
     ns.Print("/gui scale <0.6-1.6> — " .. L["window size"])
     ns.Print("/gui reset — " .. L["reset the window position"])
+    ns.Print("/gef new — " .. L["what's new in this version"])
   else
     ns.Toggle()
   end

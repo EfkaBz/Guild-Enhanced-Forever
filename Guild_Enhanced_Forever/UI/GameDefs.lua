@@ -613,7 +613,7 @@ do
     sub:SetJustifyH("CENTER")
     rollBtn = S.Button(f, L["Roll!"], 160, 34, function()
       local m = ns.GameMatch()
-      if m and not m.over and G.IsMyTurn(m) and not waiting then
+      if m and not m.over and not m.watch and G.IsMyTurn(m) and not waiting then
         -- against the bot the roll stays in the addon (no /roll spam around you)
         if m.bot then ns.GameMove(tostring(math.random(1, m.max))) return end
         waiting = m.max

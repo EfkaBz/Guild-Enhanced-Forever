@@ -268,6 +268,53 @@ Net.On("LJ", function(d, sender)
   if page and page:IsVisible() then ns.RefreshEvents() end
 end)
 
+-- Reminders: the creator of an event (or an officer) alerts again the guildmates who have not
+-- answered it yet. Sent to the guild; each one checks on their side whether they answered.
+local REMIND_COOLDOWN = 60
+local lastRemind = {} -- event id -> time of my last reminder
+
+local function canRemind(ev)
+  return ev and not ev.del and type(ev.t) == "number" and ev.t > now() - 3600
+    and (isMine(ev.by) or Sync.IsOfficer(ns.MyName()))
+end
+
+local function remind(ev)
+  if not canRemind(ev) then return end
+  local left = REMIND_COOLDOWN - (GetTime() - (lastRemind[ev.id] or -1000))
+  if left > 0 then
+    ns.Print(string.format(L["Wait %d s before sending another reminder."], math.ceil(left)))
+    return
+  end
+  lastRemind[ev.id] = GetTime()
+  -- the event goes along: a guildmate who never received it still gets the alert
+  Net.Send("ER", { id = ev.id, who = ns.MyName(), title = ev.title, t = ev.t, kind = ev.kind, by = ev.by }, "GUILD")
+  local s = sortSignups(ev)
+  ns.Print(string.format(L["Reminder sent for %s (%d answers so far)."], "|cffffd100" .. (ev.title or "") .. "|r",
+    #s.yes + #s.wait + #s.maybe + #s.no))
+end
+
+Net.On("ER", function(d, sender)
+  if type(d) ~= "table" then return end
+  local ev = Sync.Get("events", tostring(d.id))
+  if not ev then
+    if type(d.by) ~= "string" or type(d.t) ~= "number" then return end
+    ev = { id = tostring(d.id), title = type(d.title) == "string" and Net.Clean(d.title) or "", t = d.t,
+      kind = d.kind, by = d.by }
+  end
+  if ev.del or isMine(ev.by) or myAnswer(ev.id) then return end
+  if type(ev.t) ~= "number" or ev.t < now() - 3600 then return end
+  -- the full name sent along tells apart two players sharing a first name
+  local who = sender
+  if type(d.who) == "string" and ns.byName[d.who] and ns.Short(d.who):match("^%S+") == sender then who = d.who end
+  if not (ns.SameAuthor(who, ev.by) or who == ev.by or Sync.IsOfficer(who)) then return end
+  local k = KIND[ev.kind] or KIND.other
+  ns.Notify({ icon = k[3], title = L["Event reminder"],
+    text = string.format(L["%s reminds you of %s  ·  %s %s. You have not answered yet."], nameLabel(who),
+      "|cffffd100" .. (ev.title or "") .. "|r", relDay(ev.t), ns.FormatTime(ev.t)),
+    sound = SOUNDKIT and SOUNDKIT.READY_CHECK or 8960, duration = 30,
+    buttons = { { L["View"], function() selected = ev.id; mode = "cal"; ns.OpenPage(PAGE) end, true } } })
+end)
+
 -- Forms ----------------------------------------------------------------------------------------------------
 local function dayOptions()
   local list, t = {}, time()
@@ -507,6 +554,7 @@ local function refreshDetail(ev)
   d.edit:SetShown(canEdit(ev))
   d.delete:SetShown(canEdit(ev))
   d.inviteAll:SetShown(isMine(ev.by) or Sync.IsOfficer(ns.MyName()))
+  d.remind:SetShown(canRemind(ev))
   fillPeople({
     { title = L["Present"], list = s.yes }, { title = L["Waiting list"], list = s.wait },
     { title = L["Maybe"], list = s.maybe }, { title = L["Absent"], list = s.no },
@@ -886,9 +934,12 @@ local function build(p)
     if ev then inviteAll(ev) end
   end)
   d.inviteAll:SetPoint("BOTTOMRIGHT")
+  d.remind = S.Button(inner, L["Remind"], 110, 24, function() remind(Sync.Get("events", selected)) end)
+  d.remind:SetPoint("RIGHT", d.inviteAll, "LEFT", -6, 0)
+  S.Tooltip(d.remind, { L["Remind"], L["Alert again the guildmates who have not answered this event yet."] })
   local hint = S.Text(inner, 10, "muted")
   hint:SetPoint("BOTTOMLEFT", 0, 6)
-  hint:SetPoint("RIGHT", d.inviteAll, "LEFT", -10, 0)
+  hint:SetPoint("RIGHT", d.remind, "LEFT", -10, 0)
   hint:SetText(L["Shared with the guildmates who have Guild Enhanced."])
 
   -- group finder -----------------------------------------------------------------
