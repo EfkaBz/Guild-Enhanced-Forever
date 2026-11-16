@@ -60,8 +60,9 @@ local function apply(e)
     if done then
       -- the colors of the tabard, set here: the emblem in its color, on a plain disc of the background color
       e.emblem:SetVertexColor(t.emblem[1] or 1, t.emblem[2] or 1, t.emblem[3] or 1)
-      e.bg:SetVertexColor(1, 1, 1, 1)
-      e.bg:SetColorTexture(t.bg[1] or 0.1, t.bg[2] or 0.1, t.bg[3] or 0.1, 1)
+      -- a round disc (the addon's own texture) in the background color: no mask needed
+      e.bg:SetTexture(ns.Skin.MEDIA .. "Dot")
+      e.bg:SetVertexColor(t.bg[1] or 0.1, t.bg[2] or 0.1, t.bg[3] or 0.1, 1)
     end
   end
   e.bg:SetShown(done)
@@ -83,11 +84,13 @@ function ns.GuildEmblem(parent, layer, sub, anchor, fallback, round)
     emblem = parent:CreateTexture(nil, layer, nil, sub + 2),
     fallback = fallback,
   }
-  e.bg:SetAllPoints(anchor)
+  -- round: a little inside the portrait, so the disc stays within the gold ring
+  local inset = round and 3 or 0
+  e.bg:SetPoint("TOPLEFT", anchor, "TOPLEFT", inset, -inset)
+  e.bg:SetPoint("BOTTOMRIGHT", anchor, "BOTTOMRIGHT", -inset, inset)
   e.border:SetAllPoints(anchor)
   e.border:Hide()
   e.scratch:Hide()
-  if round and e.bg.SetMask then pcall(e.bg.SetMask, e.bg, "Interface\\CharacterFrame\\TempPortraitAlphaMask") end
   local size = anchor:GetWidth()
   if not size or size <= 0 then size = 60 end
   e.emblem:SetSize(size * 0.78, size * 0.78)
