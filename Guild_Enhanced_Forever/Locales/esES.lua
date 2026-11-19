@@ -116,6 +116,8 @@ L["Note"] = "Nota"
 L["OK"] = "Aceptar"
 L["Officer"] = "Oficial"
 L["Officer note"] = "Nota de oficial"
+L["On this server, notes can only be edited from the game's own guild window: click the player there, then their note."] = "En este servidor, las notas solo se pueden editar desde la ventana de hermandad del juego: haz clic en el jugador y luego en su nota."
+L["Open the game's guild window"] = "Abrir la ventana de hermandad del juego"
 L["Offline"] = "Desconectado"
 L["Offline for %s"] = "Desconectado desde hace %s"
 L["Online"] = "Conectado"
@@ -686,3 +688,9 @@ L["Your guild's emblem, taken from its tabard, now shows in the window and on th
 L["The News page now lists the items guildmates receive from dungeon and raid bosses, in their rarity color."] = "La página Noticias ahora muestra los objetos que los miembros de la hermandad reciben de los jefes de mazmorra y banda, con el color de su calidad."
 L["Clickable items"] = "Objetos clicables"
 L["Click an item in the news to open it like a chat link; Shift-click links it in chat."] = "Haz clic en un objeto de las noticias para abrirlo como un enlace del chat; Mayús-clic lo enlaza en el chat."
+
+-- 1.0.10
+L["Guild notes"] = "Notas de hermandad"
+L["This server only lets the game's own guild window save notes: the note button now explains it and opens that window."] = "En este servidor solo la ventana de hermandad del juego puede guardar notas: el botón de nota ahora lo explica y abre esa ventana."
+L["Fixes"] = "Correcciones"
+L["No more errors when hovering creatures in instances, or the 3D portrait of a member."] = "Se acabaron los errores al pasar el ratón sobre criaturas en instancias o sobre el retrato 3D de un miembro."

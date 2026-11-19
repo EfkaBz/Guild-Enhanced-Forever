@@ -116,6 +116,8 @@ L["Note"] = "Заметка"
 L["OK"] = "ОК"
 L["Officer"] = "Офицер"
 L["Officer note"] = "Заметка офицера"
+L["On this server, notes can only be edited from the game's own guild window: click the player there, then their note."] = "На этом сервере заметки можно изменить только в окне гильдии самой игры: нажмите на игрока, затем на его заметку."
+L["Open the game's guild window"] = "Открыть окно гильдии игры"
 L["Offline"] = "Не в сети"
 L["Offline for %s"] = "Не в сети %s"
 L["Online"] = "В сети"
@@ -686,3 +688,9 @@ L["Your guild's emblem, taken from its tabard, now shows in the window and on th
 L["The News page now lists the items guildmates receive from dungeon and raid bosses, in their rarity color."] = "На странице «Новости» теперь видны предметы, которые согильдийцы получают с боссов подземелий и рейдов, в цвете их качества."
 L["Clickable items"] = "Кликабельные предметы"
 L["Click an item in the news to open it like a chat link; Shift-click links it in chat."] = "Щелкните предмет в новостях, чтобы открыть его как ссылку из чата; Shift-щелчок вставляет ссылку в чат."
+
+-- 1.0.10
+L["Guild notes"] = "Заметки гильдии"
+L["This server only lets the game's own guild window save notes: the note button now explains it and opens that window."] = "На этом сервере сохранять заметки может только окно гильдии самой игры: кнопка заметки теперь объясняет это и открывает это окно."
+L["Fixes"] = "Исправления"
+L["No more errors when hovering creatures in instances, or the 3D portrait of a member."] = "Больше нет ошибок при наведении на существ в подземельях или на 3D-портрет участника."

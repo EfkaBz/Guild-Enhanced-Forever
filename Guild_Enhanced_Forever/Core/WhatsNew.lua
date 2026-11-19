@@ -5,10 +5,10 @@ local S, L = ns.Skin, ns.L
 
 -- the new things of this version: icon, title, text (English keys, translated in the locales)
 local NEWS = {
-  { "Interface\\Icons\\INV_Misc_Head_Dragon_01", "Boss loot",
-    "The News page now lists the items guildmates receive from dungeon and raid bosses, in their rarity color." },
-  { "Interface\\Icons\\INV_Misc_Bag_10", "Clickable items",
-    "Click an item in the news to open it like a chat link; Shift-click links it in chat." },
+  { "Interface\\Icons\\INV_Misc_Note_01", "Guild notes",
+    "This server only lets the game's own guild window save notes: the note button now explains it and opens that window." },
+  { "Interface\\Icons\\INV_Misc_Wrench_01", "Fixes",
+    "No more errors when hovering creatures in instances, or the 3D portrait of a member." },
 }
 
 local function version()

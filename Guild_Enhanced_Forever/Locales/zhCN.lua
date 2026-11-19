@@ -116,6 +116,8 @@ L["Note"] = "备注"
 L["OK"] = "确定"
 L["Officer"] = "官员"
 L["Officer note"] = "官员备注"
+L["On this server, notes can only be edited from the game's own guild window: click the player there, then their note."] = "在此服务器上，只能通过游戏自带的公会窗口编辑备注：在那里点击玩家，然后点击其备注。"
+L["Open the game's guild window"] = "打开游戏公会窗口"
 L["Offline"] = "离线"
 L["Offline for %s"] = "已离线 %s"
 L["Online"] = "在线"
@@ -686,3 +688,9 @@ L["Your guild's emblem, taken from its tabard, now shows in the window and on th
 L["The News page now lists the items guildmates receive from dungeon and raid bosses, in their rarity color."] = "新闻页面现在会以品质颜色列出公会成员从地下城和团队副本首领处获得的物品。"
 L["Clickable items"] = "可点击的物品"
 L["Click an item in the news to open it like a chat link; Shift-click links it in chat."] = "点击新闻中的物品即可像聊天链接一样打开；Shift-点击可将其链接到聊天中。"
+
+-- 1.0.10
+L["Guild notes"] = "公会备注"
+L["This server only lets the game's own guild window save notes: the note button now explains it and opens that window."] = "在此服务器上，只有游戏自带的公会窗口能保存备注：备注按钮现在会说明这一点并打开该窗口。"
+L["Fixes"] = "修复"
+L["No more errors when hovering creatures in instances, or the 3D portrait of a member."] = "在副本中悬停生物或成员的3D头像时不再报错。"

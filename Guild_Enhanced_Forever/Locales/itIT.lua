@@ -116,6 +116,8 @@ L["Note"] = "Nota"
 L["OK"] = "OK"
 L["Officer"] = "Ufficiale"
 L["Officer note"] = "Nota ufficiale"
+L["On this server, notes can only be edited from the game's own guild window: click the player there, then their note."] = "Su questo server le note si possono modificare solo dalla finestra di gilda del gioco: clicca sul giocatore, poi sulla sua nota."
+L["Open the game's guild window"] = "Apri la finestra di gilda del gioco"
 L["Offline"] = "Offline"
 L["Offline for %s"] = "Offline da %s"
 L["Online"] = "Online"
@@ -686,3 +688,9 @@ L["Your guild's emblem, taken from its tabard, now shows in the window and on th
 L["The News page now lists the items guildmates receive from dungeon and raid bosses, in their rarity color."] = "La pagina Notizie ora elenca gli oggetti che i membri della gilda ricevono dai boss di spedizioni e incursioni, nel colore della loro rarità."
 L["Clickable items"] = "Oggetti cliccabili"
 L["Click an item in the news to open it like a chat link; Shift-click links it in chat."] = "Clicca su un oggetto nelle notizie per aprirlo come un link della chat; Maiusc-clic lo collega in chat."
+
+-- 1.0.10
+L["Guild notes"] = "Note di gilda"
+L["This server only lets the game's own guild window save notes: the note button now explains it and opens that window."] = "Su questo server solo la finestra di gilda del gioco può salvare le note: il pulsante della nota ora lo spiega e apre quella finestra."
+L["Fixes"] = "Correzioni"
+L["No more errors when hovering creatures in instances, or the 3D portrait of a member."] = "Niente più errori passando sulle creature nelle istanze o sul ritratto 3D di un membro."

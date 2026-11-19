@@ -290,16 +290,16 @@ function ns.EditNote(m, officer)
   if not m then return end
   if officer and not ns.Can.officerNote() then return end
   if not officer and not ns.Can.publicNote() then return end
+  -- C_GuildInfo.SetNote is protected on this client (the old index-based setters are gone): only
+  -- the game's own guild window can write a note. The button opens it, the player is picked there.
   ns.Skin.Dialog({
     title = officer and L["Officer note"] or L["Public note"],
-    text = "|c" .. ns.ClassHex(m.classFile) .. m.short .. "|r",
-    input = officer and m.onote or m.note, maxLetters = 31, allowEmpty = true,
-    accept = L["Save"],
-    onAccept = function(text)
-      local i = ns.IndexOf(m.name)
-      if not i then return end
-      if officer then GuildRosterSetOfficerNote(i, text) else GuildRosterSetPublicNote(i, text) end
-      ns.RequestRoster()
+    text = "|c" .. ns.ClassHex(m.classFile) .. m.short .. "|r\n\n"
+      .. L["On this server, notes can only be edited from the game's own guild window: click the player there, then their note."],
+    accept = L["Open the game's guild window"],
+    onAccept = function()
+      if ns.Hide then ns.Hide() end
+      ns.OpenBlizzard()
     end,
   })
 end

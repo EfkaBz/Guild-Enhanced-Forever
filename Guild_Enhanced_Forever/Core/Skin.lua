@@ -574,7 +574,9 @@ end
 -- tooltip on any frame: lines = string or { title, line, line... } or function returning that
 function S.Tooltip(frame, lines, anchor)
   frame:HookScript("OnEnter", function(self)
-    local t = type(lines) == "function" and lines(self) or lines
+    -- (not "and lines(self) or lines": a function returning nil would fall back to the function)
+    local t = lines
+    if type(t) == "function" then t = t(self) end
     if not t then return end
     GameTooltip:SetOwner(self, anchor or "ANCHOR_TOP")
     if type(t) == "string" then

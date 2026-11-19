@@ -329,6 +329,12 @@ local lastKill       -- { name, t }
 local trashSince     -- a new fight started after the last kill (the combat log is protected here)
 local bossItems = {} -- itemID -> { boss, t }
 
+-- a GUID usable as a table key (secret values can't index a table)
+local function safeGUID(g)
+  if g == nil or (issecretvalue and issecretvalue(g)) then return nil end
+  return g
+end
+
 local function inInstance()
   local inside, kind = IsInInstance()
   return inside and (kind == "party" or kind == "raid")
@@ -342,7 +348,7 @@ end
 
 local function watchUnit(unit)
   if not UnitExists(unit) or UnitIsPlayer(unit) or not inInstance() then return end
-  local guid = UnitGUID(unit)
+  local guid = safeGUID(UnitGUID(unit))
   if not guid then return end
   if UnitClassification(unit) == "worldboss" or UnitLevel(unit) == -1 then
     seenBoss[guid] = UnitName(unit)
@@ -370,11 +376,11 @@ local function scanLoot()
       if GetLootSourceInfo then
         local src = { GetLootSourceInfo(slot) }
         for i = 1, #src, 2 do
-          local g = src[i]
+          local g = safeGUID(src[i])
           if g and (bossGUIDs[g] or seenBoss[g]) then boss = bossGUIDs[g] or seenBoss[g] end
         end
       elseif UnitExists("target") and UnitIsDead("target") then
-        local g = UnitGUID("target")
+        local g = safeGUID(UnitGUID("target"))
         boss = g and (bossGUIDs[g] or seenBoss[g])
       end
       addBossItem(link, boss)
@@ -455,7 +461,7 @@ lev:SetScript("OnEvent", function(_, event, ...)
     if event == "ENCOUNTER_START" then wipe(fighting) end
     for i = 1, 5 do
       local u = "boss" .. i
-      local g = UnitExists(u) and UnitGUID(u)
+      local g = UnitExists(u) and safeGUID(UnitGUID(u))
       if g then fighting[g] = UnitName(u) end
       watchUnit(u)
     end
@@ -467,7 +473,7 @@ lev:SetScript("OnEvent", function(_, event, ...)
     wipe(fighting)
     -- the boss in target, dead: its corpse
     if UnitExists("target") and not UnitIsPlayer("target") and UnitIsDead("target") then
-      local g = UnitGUID("target")
+      local g = safeGUID(UnitGUID("target"))
       if g then bossGUIDs[g] = name end
     end
   elseif event == "PLAYER_REGEN_DISABLED" then

@@ -116,6 +116,8 @@ L["Note"] = "메모"
 L["OK"] = "확인"
 L["Officer"] = "관리자"
 L["Officer note"] = "관리자 메모"
+L["On this server, notes can only be edited from the game's own guild window: click the player there, then their note."] = "이 서버에서는 게임 자체 길드 창에서만 메모를 수정할 수 있습니다. 그곳에서 플레이어를 클릭한 후 메모를 클릭하세요."
+L["Open the game's guild window"] = "게임 길드 창 열기"
 L["Offline"] = "오프라인"
 L["Offline for %s"] = "%s 동안 오프라인"
 L["Online"] = "접속 중"
@@ -686,3 +688,9 @@ L["Your guild's emblem, taken from its tabard, now shows in the window and on th
 L["The News page now lists the items guildmates receive from dungeon and raid bosses, in their rarity color."] = "이제 소식 페이지에 길드원이 던전과 공격대 우두머리에게서 얻은 아이템이 등급 색상으로 표시됩니다."
 L["Clickable items"] = "클릭 가능한 아이템"
 L["Click an item in the news to open it like a chat link; Shift-click links it in chat."] = "소식의 아이템을 클릭하면 대화 링크처럼 열립니다. Shift-클릭하면 대화창에 링크합니다."
+
+-- 1.0.10
+L["Guild notes"] = "길드 메모"
+L["This server only lets the game's own guild window save notes: the note button now explains it and opens that window."] = "이 서버에서는 게임 자체 길드 창만 메모를 저장할 수 있습니다. 이제 메모 버튼이 이를 설명하고 해당 창을 엽니다."
+L["Fixes"] = "수정 사항"
+L["No more errors when hovering creatures in instances, or the 3D portrait of a member."] = "인스턴스에서 몬스터나 멤버의 3D 초상화에 마우스를 올려도 더 이상 오류가 나지 않습니다."
