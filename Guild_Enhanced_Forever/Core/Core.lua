@@ -544,8 +544,7 @@ SlashCmdList.GUILDENHANCEDFOREVER = function(msg)
   elseif msg == "net" and ns.Net then
     ns.Net.Debug()
   elseif msg == "prof" and ns.ProfDebug then
-    ns.ProfDebug()
-  elseif msg == "help" then
+    ns.ProfDebug()  elseif msg == "help" then
     ns.Print("/gui — " .. L["open or close the window"])
     ns.Print("/gui blizzard — " .. L["J opens the game's guild window instead (toggle)"])
     ns.Print("/gui scale <0.6-1.6> — " .. L["window size"])

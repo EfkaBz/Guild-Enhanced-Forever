@@ -5,18 +5,10 @@ local S, L = ns.Skin, ns.L
 
 -- the new things of this version: icon, title, text (English keys, translated in the locales)
 local NEWS = {
-  { "Interface\\Icons\\INV_Shirt_GuildTabard_01", "Guild emblem",
-    "Your guild's emblem, taken from its tabard, now shows in the window and on the members page." },
-  { "Interface\\Icons\\INV_Crown_01", "Chess", "A new mini-game: chess against a guildmate or the bot." },
-  { "Interface\\Icons\\INV_Misc_Spyglass_02", "Watch tournament matches",
-    "Click a match in a tournament bracket to follow it live." },
-  { "Interface\\Icons\\INV_Misc_Book_07", "WoW quiz", "10 seconds per question, and 32 new questions." },
-  { "Interface\\Icons\\INV_Misc_Note_01", "Event reminder",
-    "The creator of an event can alert again the guildmates who have not answered it." },
-  { "Interface\\Icons\\INV_Misc_Gear_01", "Options",
-    "The options now unroll over the guild window, in sections you can fold." },
-  { "Interface\\Icons\\Spell_Nature_Invisibilty", "Opacity",
-    "A slider in the options sets the guild window opacity, from 25 to 100." },
+  { "Interface\\Icons\\INV_Misc_Head_Dragon_01", "Boss loot",
+    "The News page now lists the items guildmates receive from dungeon and raid bosses, in their rarity color." },
+  { "Interface\\Icons\\INV_Misc_Bag_10", "Clickable items",
+    "Click an item in the news to open it like a chat link; Shift-click links it in chat." },
 }
 
 local function version()

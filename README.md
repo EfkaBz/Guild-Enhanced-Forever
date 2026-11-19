@@ -32,7 +32,7 @@ Guild Enhanced Forever replaces the guild window (J) of World of Warcraft: Forev
 - **Professions:** pick a profession to see the guildmates who have it, their level and their recipes, and send craft requests.
 - **Information:** message of the day, guild information, overview tiles and class composition.
 - **Statistics:** most active members of the week, newcomers, level and class charts, seniority and anniversaries.
-- **Log, news and ranks:** joins, departures, promotions, guild news with item tooltips, and members by rank.
+- **Log, news and ranks:** joins, departures, promotions, guild news with item tooltips, boss loot of guildmates (dungeons and raids) in rarity colors, and members by rank.
 - **Mini-games:** Tic-tac-toe, Connect four, Rock paper scissors, Death roll, Five in a row, Battleship, a WoW lore quiz and Dice race. Challenge a guildmate or practice against a bot, with leaderboards and tournaments.
 - **Native interface:** the windows, tabs and buttons of the game.
 - **10 languages:** English, French, German, Spanish, Italian, Portuguese, Russian, Korean, Simplified and Traditional Chinese.
@@ -79,7 +79,7 @@ Guild Enhanced Forever remplace la fenêtre de guilde (J) de World of Warcraft: 
 - **Métiers :** choisissez un métier pour voir les membres qui l'ont, leur niveau et leurs recettes, et envoyez des demandes de fabrication.
 - **Informations :** message du jour, informations de guilde, vue d'ensemble et composition des classes.
 - **Statistiques :** membres les plus actifs de la semaine, nouveaux venus, graphiques de niveaux et de classes, ancienneté et anniversaires.
-- **Journal, actualités et rangs :** arrivées, départs, promotions, actualités de guilde avec infobulles d'objets, et membres par rang.
+- **Journal, actualités et rangs :** arrivées, départs, promotions, actualités de guilde avec infobulles d'objets, butin de boss des membres (donjons et raids) aux couleurs de rareté, et membres par rang.
 - **Mini-jeux :** morpion, puissance 4, pierre-feuille-ciseaux, death roll, cinq en ligne, bataille navale, quiz sur le lore de WoW et course de dés. Défiez un membre de la guilde ou entraînez-vous contre un bot, avec classements et tournois.
 - **Interface native :** les fenêtres, onglets et boutons du jeu.
 - **10 langues :** anglais, français, allemand, espagnol, italien, portugais, russe, coréen, chinois simplifié et traditionnel.

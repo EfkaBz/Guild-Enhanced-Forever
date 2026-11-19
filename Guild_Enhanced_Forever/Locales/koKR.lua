@@ -201,6 +201,9 @@ L["No news."] = "소식이 없습니다."
 L["%d news"] = "소식 %d개"
 L["Shift-click: link in chat"] = "Shift-클릭: 대화창에 링크"
 L["Guild news is not available in this version of the game."] = "이 버전의 게임에서는 길드 소식을 사용할 수 없습니다."
+L["Boss loot"] = "우두머리 전리품"
+L["Boss: %s"] = "우두머리: %s"
+L["No boss loot yet."] = "아직 우두머리 전리품이 없습니다."
 L["Members of this rank"] = "이 등급의 구성원"
 L["Nobody holds this rank."] = "이 등급인 구성원이 없습니다."
 L["Edit in the game's window"] = "게임 창에서 편집"
@@ -678,3 +681,8 @@ L["25 = see-through, 100 = fully opaque."] = "25 = 반투명, 100 = 완전히 �
 L["A slider in the options sets the guild window opacity, from 25 to 100."] = "설정의 슬라이더로 길드 창의 불투명도를 25부터 100까지 조절합니다."
 L["Guild emblem"] = "길드 문장"
 L["Your guild's emblem, taken from its tabard, now shows in the window and on the members page."] = "길드 휘장에서 가져온 길드 문장이 이제 창과 길드원 페이지에 표시됩니다."
+
+-- 1.0.9
+L["The News page now lists the items guildmates receive from dungeon and raid bosses, in their rarity color."] = "이제 소식 페이지에 길드원이 던전과 공격대 우두머리에게서 얻은 아이템이 등급 색상으로 표시됩니다."
+L["Clickable items"] = "클릭 가능한 아이템"
+L["Click an item in the news to open it like a chat link; Shift-click links it in chat."] = "소식의 아이템을 클릭하면 대화 링크처럼 열립니다. Shift-클릭하면 대화창에 링크합니다."

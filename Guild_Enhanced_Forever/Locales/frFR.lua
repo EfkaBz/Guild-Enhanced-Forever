@@ -201,6 +201,9 @@ L["No news."] = "Aucune actualité."
 L["%d news"] = "%d actualités"
 L["Shift-click: link in chat"] = "Maj-clic : lien dans la discussion"
 L["Guild news is not available in this version of the game."] = "Les actualités de guilde ne sont pas disponibles dans cette version du jeu."
+L["Boss loot"] = "Butin de boss"
+L["Boss: %s"] = "Boss : %s"
+L["No boss loot yet."] = "Aucun butin de boss pour l'instant."
 L["Members of this rank"] = "Membres de ce rang"
 L["Nobody holds this rank."] = "Personne n'a ce rang."
 L["Edit in the game's window"] = "Modifier dans la fenêtre du jeu"
@@ -678,3 +681,8 @@ L["25 = see-through, 100 = fully opaque."] = "25 = translucide, 100 = totalement
 L["A slider in the options sets the guild window opacity, from 25 to 100."] = "Un curseur dans les options règle l'opacité de la fenêtre de guilde, de 25 à 100."
 L["Guild emblem"] = "Emblème de guilde"
 L["Your guild's emblem, taken from its tabard, now shows in the window and on the members page."] = "L'emblème de votre guilde, tiré de son tabard, s'affiche maintenant dans la fenêtre et sur la page des membres."
+
+-- 1.0.9
+L["The News page now lists the items guildmates receive from dungeon and raid bosses, in their rarity color."] = "La page Actualités liste maintenant les objets que les membres de la guilde reçoivent sur les boss de donjon et de raid, dans la couleur de leur rareté."
+L["Clickable items"] = "Objets cliquables"
+L["Click an item in the news to open it like a chat link; Shift-click links it in chat."] = "Cliquez sur un objet des actualités pour l'ouvrir comme un lien de discussion ; Maj-clic le lie dans la discussion."

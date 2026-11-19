@@ -201,6 +201,9 @@ L["No news."] = "Новостей нет."
 L["%d news"] = "Новостей: %d"
 L["Shift-click: link in chat"] = "Shift-клик: ссылка в чат"
 L["Guild news is not available in this version of the game."] = "Новости гильдии недоступны в этой версии игры."
+L["Boss loot"] = "Добыча с боссов"
+L["Boss: %s"] = "Босс: %s"
+L["No boss loot yet."] = "Добычи с боссов пока нет."
 L["Members of this rank"] = "Участники этого звания"
 L["Nobody holds this rank."] = "Ни у кого нет этого звания."
 L["Edit in the game's window"] = "Изменить в окне игры"
@@ -678,3 +681,8 @@ L["25 = see-through, 100 = fully opaque."] = "25 = полупрозрачно, 1
 L["A slider in the options sets the guild window opacity, from 25 to 100."] = "Ползунок в настройках задает непрозрачность окна гильдии, от 25 до 100."
 L["Guild emblem"] = "Герб гильдии"
 L["Your guild's emblem, taken from its tabard, now shows in the window and on the members page."] = "Герб вашей гильдии, взятый с гильдейской гербовой накидки, теперь виден в окне и на странице участников."
+
+-- 1.0.9
+L["The News page now lists the items guildmates receive from dungeon and raid bosses, in their rarity color."] = "На странице «Новости» теперь видны предметы, которые согильдийцы получают с боссов подземелий и рейдов, в цвете их качества."
+L["Clickable items"] = "Кликабельные предметы"
+L["Click an item in the news to open it like a chat link; Shift-click links it in chat."] = "Щелкните предмет в новостях, чтобы открыть его как ссылку из чата; Shift-щелчок вставляет ссылку в чат."

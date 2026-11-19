@@ -201,6 +201,9 @@ L["No news."] = "沒有新聞。"
 L["%d news"] = "%d 則新聞"
 L["Shift-click: link in chat"] = "Shift-點擊：在聊天中連結"
 L["Guild news is not available in this version of the game."] = "此遊戲版本中沒有公會新聞。"
+L["Boss loot"] = "首領戰利品"
+L["Boss: %s"] = "首領：%s"
+L["No boss loot yet."] = "尚無首領戰利品。"
 L["Members of this rank"] = "該階級的成員"
 L["Nobody holds this rank."] = "沒有成員處於該階級。"
 L["Edit in the game's window"] = "在遊戲視窗中編輯"
@@ -678,3 +681,8 @@ L["25 = see-through, 100 = fully opaque."] = "25 = 半透明，100 = 完全不�
 L["A slider in the options sets the guild window opacity, from 25 to 100."] = "設定中的滑桿可調整公會視窗的不透明度，從 25 到 100。"
 L["Guild emblem"] = "公會徽章"
 L["Your guild's emblem, taken from its tabard, now shows in the window and on the members page."] = "你的公會徽章（取自公會外袍）現在會顯示在視窗和成員頁面上。"
+
+-- 1.0.9
+L["The News page now lists the items guildmates receive from dungeon and raid bosses, in their rarity color."] = "新聞頁面現在會以品質顏色列出公會成員從地城與團隊副本首領身上獲得的物品。"
+L["Clickable items"] = "可點擊的物品"
+L["Click an item in the news to open it like a chat link; Shift-click links it in chat."] = "點擊新聞中的物品即可像聊天連結一樣開啟；Shift-點擊可將其連結到聊天中。"
