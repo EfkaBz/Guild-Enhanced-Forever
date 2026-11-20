@@ -694,3 +694,12 @@ L["Guild notes"] = "Notas de hermandad"
 L["This server only lets the game's own guild window save notes: the note button now explains it and opens that window."] = "En este servidor solo la ventana de hermandad del juego puede guardar notas: el botón de nota ahora lo explica y abre esa ventana."
 L["Fixes"] = "Correcciones"
 L["No more errors when hovering creatures in instances, or the 3D portrait of a member."] = "Se acabaron los errores al pasar el ratón sobre criaturas en instancias o sobre el retrato 3D de un miembro."
+
+-- 1.0.11
+L["Role"] = "Rol"
+L["My roles"] = "Mis roles"
+L["Click to add or remove this role. Your roles show in the members list and in the events."] = "Haz clic para añadir o quitar este rol. Tus roles aparecen en la lista de miembros y en los eventos."
+L["Several roles"] = "Varios roles"
+L["Check every role you can play (tank, healer, damage): your sign-ups and join requests carry them all."] = "Marca cada rol que puedas jugar (tanque, sanador, daño): tus inscripciones y solicitudes para unirte los incluyen todos."
+L["Roles in the members list"] = "Roles en la lista de miembros"
+L["Pick your roles at the top of the members page: a new Role column shows everyone's role icons, and sorts by them."] = "Elige tus roles arriba en la página de miembros: una nueva columna Rol muestra los iconos de rol de todos y permite ordenar por ellos."

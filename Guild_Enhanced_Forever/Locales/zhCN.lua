@@ -694,3 +694,12 @@ L["Guild notes"] = "公会备注"
 L["This server only lets the game's own guild window save notes: the note button now explains it and opens that window."] = "在此服务器上，只有游戏自带的公会窗口能保存备注：备注按钮现在会说明这一点并打开该窗口。"
 L["Fixes"] = "修复"
 L["No more errors when hovering creatures in instances, or the 3D portrait of a member."] = "在副本中悬停生物或成员的3D头像时不再报错。"
+
+-- 1.0.11
+L["Role"] = "职责"
+L["My roles"] = "我的职责"
+L["Click to add or remove this role. Your roles show in the members list and in the events."] = "点击添加或移除此职责。你的职责会显示在成员列表和活动中。"
+L["Several roles"] = "多个职责"
+L["Check every role you can play (tank, healer, damage): your sign-ups and join requests carry them all."] = "勾选你能胜任的每个职责（坦克、治疗、伤害）：你的报名和加入请求都会包含它们。"
+L["Roles in the members list"] = "成员列表中的职责"
+L["Pick your roles at the top of the members page: a new Role column shows everyone's role icons, and sorts by them."] = "在成员页面顶部选择你的职责：新的职责列显示每个人的职责图标，并可按其排序。"

@@ -5,10 +5,10 @@ local S, L = ns.Skin, ns.L
 
 -- the new things of this version: icon, title, text (English keys, translated in the locales)
 local NEWS = {
-  { "Interface\\Icons\\INV_Misc_Note_01", "Guild notes",
-    "This server only lets the game's own guild window save notes: the note button now explains it and opens that window." },
-  { "Interface\\Icons\\INV_Misc_Wrench_01", "Fixes",
-    "No more errors when hovering creatures in instances, or the 3D portrait of a member." },
+  { "Interface\\Icons\\Ability_Defend", "Several roles",
+    "Check every role you can play (tank, healer, damage): your sign-ups and join requests carry them all." },
+  { "Interface\\Icons\\INV_Misc_GroupNeedMore", "Roles in the members list",
+    "Pick your roles at the top of the members page: a new Role column shows everyone's role icons, and sorts by them." },
 }
 
 local function version()

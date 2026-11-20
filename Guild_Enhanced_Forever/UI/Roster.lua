@@ -8,11 +8,12 @@ local ROW_H = 22
 local LIST_W, DETAIL_W = 650, 250
 local COLS = {
   { key = "name",  label = "Name",        w = 160 },
-  { key = "level", label = "Lvl",         w = 40, center = true },
-  { key = "rank",  label = "Rank",        w = 110 },
-  { key = "zone",  label = "Zone",        w = 130 },
-  { key = "note",  label = "Note",        w = 115 },
-  { key = "last",  label = "Last online", w = 75 },
+  { key = "role",  label = "Role",        w = 48, center = true },
+  { key = "level", label = "Lvl",         w = 36, center = true },
+  { key = "rank",  label = "Rank",        w = 104 },
+  { key = "zone",  label = "Zone",        w = 112 },
+  { key = "note",  label = "Note",        w = 100 },
+  { key = "last",  label = "Last online", w = 70 },
 }
 local STATUS_COLORS = {
   online = { 0.42, 0.86, 0.55 }, afk = { 1, 0.78, 0.3 }, dnd = { 1, 0.38, 0.38 },
@@ -37,8 +38,15 @@ local function matches(m)
   return true
 end
 
+-- by role: tanks, then healers, then damage; several roles after the single ones; unknown last
+local ROLE_RANK = { tank = 1, heal = 2, dps = 3 }
 local SORT = {
   name = function(m) return m.short:lower() end,
+  role = function(m)
+    local list = ns.RolesOf and ns.RolesOf(m)
+    if not list then return 99 end
+    return ROLE_RANK[list[1]] * 10 + #list
+  end,
   level = function(m) return m.level end,
   rank = function(m) return m.rankIndex end,
   zone = function(m) return m.zone:lower() end,
@@ -79,6 +87,16 @@ local function fillRow(row, m)
   row.dot:SetShown(sc ~= nil)
   if sc then row.dot:SetVertexColor(sc[1], sc[2], sc[3], 1) end
 
+  local roles = ns.RolesOf and ns.RolesOf(m)
+  local n = ns.SetRoleIcons(row.roleIcons, roles)
+  -- centered in the column
+  for k = 1, n do
+    local t = row.roleIcons[k]
+    t:ClearAllPoints()
+    t:SetPoint("CENTER", row.roleBox, "CENTER", (k - (n + 1) / 2) * 14, 0)
+    t:SetAlpha(m.online and 1 or 0.55)
+    t:SetDesaturated(not m.online)
+  end
   row.level:SetText(m.level)
   local qc = GetQuestDifficultyColor and m.online and GetQuestDifficultyColor(m.level)
   if qc then row.level:SetTextColor(qc.r, qc.g, qc.b) else row.level:SetTextColor(color(C.dim, fade)) end
@@ -171,6 +189,8 @@ local function rowTooltip(row)
   GameTooltip:AddLine(m.short, r, g, b)
   GameTooltip:AddLine(string.format(L["Level %d %s"], m.level, m.class), 1, 1, 1)
   GameTooltip:AddDoubleLine(L["Rank"], m.rank, 0.6, 0.55, 0.7, color(C.gold))
+  local roles = ns.RolesOf and ns.RolesOf(m)
+  if roles then GameTooltip:AddDoubleLine(L["Role"], ns.RolesName(roles), 0.6, 0.55, 0.7, 1, 1, 1) end
   if m.zone ~= "" then GameTooltip:AddDoubleLine(L["Zone"], m.zone, 0.6, 0.55, 0.7, 1, 1, 1) end
   GameTooltip:AddDoubleLine(L["Last online"], ns.LastOnlineText(m), 0.6, 0.55, 0.7, 1, 1, 1)
   if m.note ~= "" then GameTooltip:AddLine(" "); GameTooltip:AddLine(L["Note"] .. ": |cffffffff" .. m.note .. "|r", 0.6, 0.55, 0.7, true) end
@@ -214,8 +234,23 @@ local function makeRow(parent, i)
 
   local x = 0
   for _, col in ipairs(COLS) do
+    if col.key == "role" then
+      -- the role icons (up to three), centered in the column
+      row.roleBox = CreateFrame("Frame", nil, row)
+      row.roleBox:SetPoint("LEFT", x, 0)
+      row.roleBox:SetSize(col.w, ROW_H)
+      row.roleIcons = {}
+      for k = 1, 3 do
+        local t = row:CreateTexture(nil, "ARTWORK")
+        t:SetSize(13, 13)
+        t:Hide()
+        row.roleIcons[k] = t
+      end
+    end
     local fs = S.Text(row, 12, "text")
-    if col.key == "name" then
+    if col.key == "role" then
+      fs:Hide()
+    elseif col.key == "name" then
       fs:SetPoint("LEFT", 38, 0)
       fs:SetWidth(col.w - 42)
     else
@@ -503,9 +538,16 @@ end
 local function build(p)
   page = p
 
+  -- my roles, at the right of the message of the day (several can be checked)
+  local picker = ns.RolePicker(p, 26, 34)
+  picker:SetPoint("TOPRIGHT", -4, -3)
+  local pickLabel = S.Text(p, 11, "muted")
+  pickLabel:SetPoint("RIGHT", picker, "LEFT", -10, 0)
+  pickLabel:SetText(L["My roles"])
+
   motd = buildMOTD(p)
   motd:SetPoint("TOPLEFT")
-  motd:SetPoint("TOPRIGHT")
+  motd:SetPoint("TOPRIGHT", -(4 + picker:GetWidth() + 10 + math.ceil(pickLabel:GetStringWidth()) + 14), 0)
 
   -- toolbar
   search = S.EditBox(p, 190, 24, L["Search name, zone, note..."])
@@ -626,5 +668,8 @@ end
 ns.AddPage(1, "Roster", build, onShow, { "Interface\\Icons\\INV_Misc_GroupNeedMore", "Interface\\Icons\\INV_Misc_GroupLooking", "Interface\\Icons\\Spell_Holy_PrayerOfFortitude" })
 
 ns.On("ROSTER", function() if page and page:IsVisible() then ns.RefreshRoster() end end)
+local function rolesChanged() if page and page:IsVisible() then ns.RefreshRoster() end end
+ns.On("SYNC_ROLES", rolesChanged)
+ns.On("MYROLES", rolesChanged)
 ns.On("GUILD", function() if motd then motd:Refresh() end end)
 ns.On("RANKS", function() if rankDrop then rankDrop.Refresh() end end)

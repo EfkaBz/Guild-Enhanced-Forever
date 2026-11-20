@@ -28,10 +28,43 @@ for _, r in ipairs(ROLES) do ROLE[r[1]] = r end
 ns.ROLES = ROLES
 
 local CLASS_ROLE = { WARRIOR = "tank", PRIEST = "heal", PALADIN = "heal", SHAMAN = "heal", DRUID = "heal" }
-function ns.MyRole()
-  if ns.db.myRole and ROLE[ns.db.myRole] then return ns.db.myRole end
-  local _, file = UnitClass("player")
-  return CLASS_ROLE[file] or "dps"
+local ROLE_ORDER = { "tank", "heal", "dps" }
+-- several roles: kept as a set in ns.db.myRoles, shared as text ("tank,heal", in the order above)
+local function parseRoles(text, fallback)
+  local set, list = {}, {}
+  if type(text) == "string" then
+    for r in text:gmatch("[^,]+") do if ROLE[r] then set[r] = true end end
+  end
+  if not next(set) and fallback and ROLE[fallback] then set[fallback] = true end
+  for _, r in ipairs(ROLE_ORDER) do if set[r] then list[#list + 1] = r end end
+  return list
+end
+local function myRoleSet()
+  local db = ns.db
+  if type(db.myRoles) ~= "table" or not next(db.myRoles) then
+    local _, file = UnitClass("player")
+    db.myRoles = { [(db.myRole and ROLE[db.myRole]) and db.myRole or CLASS_ROLE[file] or "dps"] = true }
+  end
+  return db.myRoles
+end
+function ns.MyRoles()
+  local set, list = myRoleSet(), {}
+  for _, r in ipairs(ROLE_ORDER) do if set[r] then list[#list + 1] = r end end
+  if #list == 0 then list[1] = "dps" end
+  return list
+end
+-- the first of my roles (older versions of the addon know one role only)
+function ns.MyRole() return ns.MyRoles()[1] end
+local function myRolesText() return table.concat(ns.MyRoles(), ",") end
+-- the roles of an answer or a request: "roles" ("tank,heal"), or the one "role" of older versions
+function ns.RecRoles(rec) return parseRoles(rec and rec.roles, rec and rec.role or "dps") end
+-- the roles a guildmate chose (shared by the addon); nil when unknown
+function ns.RolesOf(m)
+  if not m then return nil end
+  if ns.IsMe(m) then return ns.MyRoles() end
+  local rec = ns.Sync.Get("roles", m.name)
+  local list = rec and parseRoles(rec.r)
+  return list and #list > 0 and list or nil
 end
 function ns.RoleIcon(role) return S.PickIcon(ROLE[role] and ROLE[role][3] or ROLE.dps[3]) end
 -- the game's round role icon (its group finder art) on a texture; the spell icon when it lacks it
@@ -47,6 +80,21 @@ function ns.SetRoleIcon(tex, role)
   end
 end
 function ns.RoleName(role) return L[ROLE[role] and ROLE[role][2] or "Damage"] end
+function ns.RolesName(list)
+  local t = {}
+  for i, r in ipairs(list or {}) do t[i] = ns.RoleName(r) end
+  return table.concat(t, " / ")
+end
+-- role icons side by side (textures made by the caller): shows the first #list, hides the rest
+function ns.SetRoleIcons(icons, list)
+  local n = 0
+  for i, tex in ipairs(icons) do
+    local r = list and list[i]
+    tex:SetShown(r ~= nil)
+    if r then ns.SetRoleIcon(tex, r); n = i end
+  end
+  return n
+end
 
 -- Kinds and places ------------------------------------------------------------------------------------
 local KINDS = {
@@ -140,6 +188,97 @@ local joinBlock -- (below)
 local function isMine(name) return ns.SameAuthor(ns.MyName(), name) end
 local function canEdit(ev) return ev and (isMine(ev.by) or Sync.IsOfficer(ns.MyName())) end
 
+-- my roles, shared with the guild (collection "roles", one record per player)
+local function shareRoles()
+  local me = ns.MyName()
+  if not me or not Sync.Started() then return end
+  local old, txt = Sync.Get("roles", me), myRolesText()
+  if not old or old.r ~= txt then Sync.Put("roles", { id = me, by = me, r = txt }) end
+end
+Sync.Register("roles", {
+  keep = 30 * 86400,
+  validate = function(rec) return rec.id == rec.ed and rec.by == rec.id end,
+  ready = shareRoles,
+})
+
+-- checks or unchecks one of my roles (one at least stays)
+function ns.ToggleMyRole(role)
+  if not ROLE[role] then return end
+  local set = myRoleSet()
+  if set[role] then
+    if #ns.MyRoles() <= 1 then return end
+    set[role] = nil
+  else
+    set[role] = true
+  end
+  ns.db.myRole = ns.MyRole()
+  -- the answers already given follow the new roles
+  local txt, first = myRolesText(), ns.MyRole()
+  for _, r in ipairs(Sync.All("rsvp")) do
+    if isMine(r.who) and (r.roles ~= txt or r.role ~= first) then
+      local copy = CopyTable(r); copy.role = first; copy.roles = txt
+      Sync.Put("rsvp", copy)
+    end
+  end
+  shareRoles()
+  ns.Fire("MYROLES")
+end
+
+-- the role picker: the game's own round role icons (its group finder art) with their colored glow
+-- and a check box each; several can be checked. size: icon size, step: distance between icons
+function ns.RolePicker(parent, size, step)
+  local f = CreateFrame("Frame", nil, parent)
+  f:SetSize((#ROLES - 1) * step + size, size)
+  f.buttons = {}
+  local big = size >= 30
+  for k, r in ipairs(ROLES) do
+    local b = CreateFrame("Button", nil, f)
+    b:SetSize(size, size)
+    b:SetPoint("LEFT", (k - 1) * step, 0)
+    b.glow = b:CreateTexture(nil, "BACKGROUND")
+    b.glow:SetPoint("CENTER")
+    b.glow:SetSize(size * 1.25, size * 1.25)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetAllPoints()
+    ns.SetRoleIcon(b.icon, r[1])
+    if GetBackgroundTexCoordsForRole then
+      b.glow:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-ROLEBACKGROUNDS")
+      b.glow:SetTexCoord(GetBackgroundTexCoordsForRole(GAME_ROLE[r[1]]))
+      b.glow:SetAlpha(0.6)
+    end
+    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
+    b.check = S.Check(b, nil, big and 12 or 8)
+    b.check:SetPoint("BOTTOMLEFT", big and -6 or -5, big and -6 or -5)
+    local function pick() ns.ToggleMyRole(r[1]); f:Refresh() end
+    b:SetScript("OnClick", pick)
+    b.check:SetScript("OnClick", pick)
+    for _, w in ipairs({ b, b.check }) do
+      w:SetScript("OnEnter", function()
+        GameTooltip:SetOwner(b, "ANCHOR_BOTTOM")
+        GameTooltip:SetText(L[r[2]])
+        GameTooltip:AddLine(L["Click to add or remove this role. Your roles show in the members list and in the events."], 1, 1, 1, true)
+        GameTooltip:Show()
+      end)
+      w:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+    b.role = r[1]
+    f.buttons[k] = b
+  end
+  function f:Refresh()
+    local set = myRoleSet()
+    for _, b in ipairs(self.buttons) do
+      local on = set[b.role] and true or false
+      b.check:SetChecked(on)
+      b.icon:SetDesaturated(not on)
+      b.icon:SetAlpha(on and 1 or 0.55)
+      b.glow:SetShown(on and GetBackgroundTexCoordsForRole ~= nil)
+    end
+  end
+  f:Refresh()
+  ns.On("MYROLES", function() f:Refresh() end)
+  return f
+end
+
 local function signups(evId)
   local list = {}
   for _, r in ipairs(Sync.All("rsvp")) do
@@ -159,7 +298,8 @@ local function sortSignups(ev)
         res.wait[#res.wait + 1] = r
       else
         res.yes[#res.yes + 1] = r
-        res.roles[r.role] = (res.roles[r.role] or 0) + 1
+        -- someone who can play several roles counts in each of them
+        for _, role in ipairs(ns.RecRoles(r)) do res.roles[role] = (res.roles[role] or 0) + 1 end
       end
     elseif r.st == "maybe" then res.maybe[#res.maybe + 1] = r
     elseif r.st == "no" then res.no[#res.no + 1] = r end
@@ -172,7 +312,7 @@ local function myAnswer(evId) return Sync.Get("rsvp", evId .. "@" .. ns.MyName()
 local function answer(ev, st)
   local old = myAnswer(ev.id)
   local _, cls = UnitClass("player")
-  Sync.Put("rsvp", { id = ev.id .. "@" .. ns.MyName(), ev = ev.id, who = ns.MyName(), st = st, role = ns.MyRole(), cls = cls,
+  Sync.Put("rsvp", { id = ev.id .. "@" .. ns.MyName(), ev = ev.id, who = ns.MyName(), st = st, role = ns.MyRole(), roles = myRolesText(), cls = cls,
     lvl = UnitLevel("player"),
     -- the place in the waiting list is kept unless you were not "present" before
     at = (old and old.st == "yes" and st == "yes") and old.at or now() })
@@ -241,7 +381,7 @@ end
 function ns.LfgJoin(rec)
   if not rec or isMine(rec.by) or joinBlock(rec) then return end
   local _, cls = UnitClass("player")
-  Net.Send("LJ", { id = rec.id, who = ns.MyName(), role = ns.MyRole(), cls = cls, lvl = UnitLevel("player") },
+  Net.Send("LJ", { id = rec.id, who = ns.MyName(), role = ns.MyRole(), roles = myRolesText(), cls = cls, lvl = UnitLevel("player") },
     "WHISPER", rec.by)
   rec.asked = true
   ns.Print(string.format(L["Request sent to %s."], rec.by))
@@ -256,11 +396,12 @@ Net.On("LJ", function(d, sender)
   if type(d.who) == "string" and ns.byName[d.who] and ns.Short(d.who):match("^%S+") == sender then sender = d.who end
   requests[rec.id] = requests[rec.id] or {}
   for _, q in ipairs(requests[rec.id]) do if q.name == sender then return end end
-  local role = ROLE[d.role] and d.role or "dps"
-  table.insert(requests[rec.id], { name = sender, role = role, cls = d.cls, lvl = tonumber(d.lvl) })
+  local roles = parseRoles(d.roles, ROLE[d.role] and d.role or "dps")
+  local role = roles[1]
+  table.insert(requests[rec.id], { name = sender, role = role, roles = roles, cls = d.cls, lvl = tonumber(d.lvl) })
   local m = ns.byName[sender]
   ns.Notify({ icon = ns.RoleIcon(role), title = L["Join request"],
-    text = string.format(L["%s (%s, %s) wants to join: %s"], nameLabel(sender), ns.RoleName(role),
+    text = string.format(L["%s (%s, %s) wants to join: %s"], nameLabel(sender), ns.RolesName(roles),
       tostring(d.lvl or "?"), rec.what or ""),
     sound = SOUNDKIT and SOUNDKIT.READY_CHECK or 8960, duration = 40,
     buttons = { { L["Invite"], function() if m then ns.GroupInvite(m) else InviteUnit(sender) end end, true },
@@ -469,12 +610,15 @@ local function personRow(i)
   r:SetHeight(20)
   r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
   S.RowHighlight(r)
-  r.role = r:CreateTexture(nil, "ARTWORK")
-  r.role:SetSize(14, 14)
-  r.role:SetPoint("LEFT", 4, 0)
-  r.role:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+  r.roles = {}
+  for k = 1, #ROLES do
+    local t = r:CreateTexture(nil, "ARTWORK")
+    t:SetSize(14, 14)
+    t:SetPoint("LEFT", 4 + (k - 1) * 15, 0)
+    r.roles[k] = t
+  end
   r.name = S.Text(r, 12, "text")
-  r.name:SetPoint("LEFT", r.role, "RIGHT", 6, 0)
+  r.name:SetPoint("LEFT", 24, 0)
   r.right = S.Text(r, 10, "muted")
   r.right:SetPoint("RIGHT", -4, 0)
   r.header = S.Text(r, 11, "gold")
@@ -496,7 +640,7 @@ local function fillPeople(groups)
       local h = personRow(i)
       h.who = nil
       h.header:SetText(g.title .. "  |cff999999" .. #g.list .. "|r")
-      h.header:Show(); h.role:Hide(); h.name:SetText(""); h.right:SetText("")
+      h.header:Show(); ns.SetRoleIcons(h.roles, nil); h.name:SetText(""); h.right:SetText("")
       h:SetPoint("TOPLEFT", 0, -y); h:SetPoint("TOPRIGHT", 0, -y)
       h:Show()
       y = y + 22
@@ -505,12 +649,14 @@ local function fillPeople(groups)
         local p = personRow(i)
         p.who = r.who
         p.header:Hide()
-        p.role:Show()
-        ns.SetRoleIcon(p.role, r.role)
+        local roles = ns.RecRoles(r)
+        local n = ns.SetRoleIcons(p.roles, roles)
+        p.name:ClearAllPoints()
+        p.name:SetPoint("LEFT", 4 + n * 15 + 5, 0)
         local m = ns.byName[r.who]
         p.name:SetText((m and m.online and "" or "|cff999999") .. (r.who or "?") .. "|r")
         p.name:SetTextColor(ns.ClassColor(m and m.classFile or r.cls))
-        p.right:SetText(ns.RoleName(r.role) .. (r.lvl and ("  ·  " .. r.lvl) or ""))
+        p.right:SetText(ns.RolesName(roles) .. (r.lvl and ("  ·  " .. r.lvl) or ""))
         p:SetPoint("TOPLEFT", 0, -y); p:SetPoint("TOPRIGHT", 0, -y)
         p:Show()
         y = y + 20
@@ -655,7 +801,7 @@ local function refreshLfg(animate)
         local items = { { text = rec.what, title = true } }
         for _, p in ipairs(q) do
           local pm = ns.byName[p.name]
-          items[#items + 1] = { text = string.format("%s  ·  %s  ·  %s", nameLabel(p.name), ns.RoleName(p.role),
+          items[#items + 1] = { text = string.format("%s  ·  %s  ·  %s", nameLabel(p.name), ns.RolesName(p.roles or { p.role }),
             tostring(p.lvl or "?")), func = function() if pm then ns.GroupInvite(pm) else InviteUnit(p.name) end end }
         end
         if #q > 0 then items[#items + 1] = { separator = true } end
@@ -747,73 +893,12 @@ local function build(p)
   end
   ui.new = S.Button(p, "", 150, 22, function() if mode == "cal" then editEvent() else postSearch() end end, "primary")
   ui.new:SetPoint("TOPRIGHT", 0, -4)
-  -- my role (used for the answers and the join requests)
-  -- the three roles side by side, an icon and a check box each (like the game's group finder):
-  -- the checked one is my role
-  local function setRole(v)
-    ns.db.myRole = v
-    -- the answers already given follow the new role
-    for _, r in ipairs(Sync.All("rsvp")) do
-      if isMine(r.who) and r.role ~= v then
-        local copy = CopyTable(r); copy.role = v
-        Sync.Put("rsvp", copy)
-      end
-    end
-    ns.RefreshEvents()
-  end
-  -- the game's own role art (its group finder): the round icons with the copper ring on their
-  -- colored glow, the check box at the bottom left
-  local ROLE_W, ROLE_SIZE = 50, 36
-  ui.myRole = CreateFrame("Frame", nil, p)
-  ui.myRole:SetSize(#ROLES * ROLE_W, ROLE_SIZE)
+  -- my roles (used for the answers and the join requests): several can be checked
+  ui.myRole = ns.RolePicker(p, 36, 50)
   ui.myRole:SetPoint("RIGHT", ui.new, "LEFT", -14, -6)
-  ui.myRole.buttons = {}
-  for k, r in ipairs(ROLES) do
-    local b = CreateFrame("Button", nil, ui.myRole)
-    b:SetSize(ROLE_SIZE, ROLE_SIZE)
-    b:SetPoint("LEFT", (k - 1) * ROLE_W, 0)
-    local gr = GAME_ROLE[r[1]]
-    b.glow = b:CreateTexture(nil, "BACKGROUND")
-    b.glow:SetPoint("CENTER")
-    b.glow:SetSize(ROLE_SIZE * 1.25, ROLE_SIZE * 1.25)
-    b.icon = b:CreateTexture(nil, "ARTWORK")
-    b.icon:SetAllPoints()
-    ns.SetRoleIcon(b.icon, r[1])
-    if GetBackgroundTexCoordsForRole then
-      b.glow:SetTexture("Interface\\LFGFrame\\UI-LFG-ICON-ROLEBACKGROUNDS")
-      b.glow:SetTexCoord(GetBackgroundTexCoordsForRole(gr))
-      b.glow:SetAlpha(0.6)
-    else
-      b.glow:Hide()
-    end
-    b:SetHighlightTexture("Interface\\Minimap\\UI-Minimap-ZoomButton-Highlight", "ADD")
-    b.check = S.Check(b, nil, 12)
-    b.check:SetPoint("BOTTOMLEFT", -6, -6)
-    local function pick() setRole(r[1]) end
-    b:SetScript("OnClick", pick)
-    b.check:SetScript("OnClick", pick)
-    for _, f in ipairs({ b, b.check }) do
-      f:SetScript("OnEnter", function()
-        GameTooltip:SetOwner(b, "ANCHOR_BOTTOM")
-        GameTooltip:SetText(L[r[2]])
-        GameTooltip:Show()
-      end)
-      f:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    end
-    b.role = r[1]
-    ui.myRole.buttons[k] = b
-  end
-  function ui.myRole:Refresh()
-    local mine = ns.MyRole()
-    for _, b in ipairs(self.buttons) do
-      local on = b.role == mine
-      b.check:SetChecked(on)
-    end
-  end
-  ui.myRole:Refresh()
   local roleLabel = S.Text(p, 11, "muted")
   roleLabel:SetPoint("RIGHT", ui.myRole, "LEFT", -8, 0)
-  roleLabel:SetText(L["My role"])
+  roleLabel:SetText(L["My roles"])
 
   -- calendar ------------------------------------------------------------------
   local cal = CreateFrame("Frame", nil, p)
@@ -973,6 +1058,7 @@ ns.On("SYNC_EVENTS", later)
 ns.On("SYNC_RSVP", later)
 ns.On("SYNC_LFG", later)
 ns.On("ROSTER", later)
+ns.On("MYROLES", later)
 
 -- reminders: 15 minutes before an event you answered present or maybe; badge with the count of
 -- events of the next 24 h you have not answered

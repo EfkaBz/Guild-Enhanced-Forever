@@ -694,3 +694,12 @@ L["Guild notes"] = "길드 메모"
 L["This server only lets the game's own guild window save notes: the note button now explains it and opens that window."] = "이 서버에서는 게임 자체 길드 창만 메모를 저장할 수 있습니다. 이제 메모 버튼이 이를 설명하고 해당 창을 엽니다."
 L["Fixes"] = "수정 사항"
 L["No more errors when hovering creatures in instances, or the 3D portrait of a member."] = "인스턴스에서 몬스터나 멤버의 3D 초상화에 마우스를 올려도 더 이상 오류가 나지 않습니다."
+
+-- 1.0.11
+L["Role"] = "역할"
+L["My roles"] = "내 역할"
+L["Click to add or remove this role. Your roles show in the members list and in the events."] = "클릭하여 이 역할을 추가하거나 제거합니다. 내 역할은 길드원 목록과 이벤트에 표시됩니다."
+L["Several roles"] = "여러 역할"
+L["Check every role you can play (tank, healer, damage): your sign-ups and join requests carry them all."] = "플레이할 수 있는 역할(탱커, 치유사, 공격)을 모두 체크하세요. 참가 신청과 합류 요청에 모두 표시됩니다."
+L["Roles in the members list"] = "길드원 목록의 역할"
+L["Pick your roles at the top of the members page: a new Role column shows everyone's role icons, and sorts by them."] = "길드원 페이지 상단에서 역할을 고르세요. 새 역할 열에 모두의 역할 아이콘이 표시되며 정렬할 수 있습니다."

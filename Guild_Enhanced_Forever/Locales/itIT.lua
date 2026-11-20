@@ -694,3 +694,12 @@ L["Guild notes"] = "Note di gilda"
 L["This server only lets the game's own guild window save notes: the note button now explains it and opens that window."] = "Su questo server solo la finestra di gilda del gioco può salvare le note: il pulsante della nota ora lo spiega e apre quella finestra."
 L["Fixes"] = "Correzioni"
 L["No more errors when hovering creatures in instances, or the 3D portrait of a member."] = "Niente più errori passando sulle creature nelle istanze o sul ritratto 3D di un membro."
+
+-- 1.0.11
+L["Role"] = "Ruolo"
+L["My roles"] = "I miei ruoli"
+L["Click to add or remove this role. Your roles show in the members list and in the events."] = "Clicca per aggiungere o togliere questo ruolo. I tuoi ruoli compaiono nell'elenco dei membri e negli eventi."
+L["Several roles"] = "Più ruoli"
+L["Check every role you can play (tank, healer, damage): your sign-ups and join requests carry them all."] = "Spunta ogni ruolo che sai giocare (difensore, guaritore, danno): le tue iscrizioni e richieste di unirti li riportano tutti."
+L["Roles in the members list"] = "Ruoli nell'elenco dei membri"
+L["Pick your roles at the top of the members page: a new Role column shows everyone's role icons, and sorts by them."] = "Scegli i tuoi ruoli in cima alla pagina dei membri: una nuova colonna Ruolo mostra le icone di ruolo di tutti e permette di ordinarle."

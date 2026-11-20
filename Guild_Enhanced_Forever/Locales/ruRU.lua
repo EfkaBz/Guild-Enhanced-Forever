@@ -694,3 +694,12 @@ L["Guild notes"] = "Заметки гильдии"
 L["This server only lets the game's own guild window save notes: the note button now explains it and opens that window."] = "На этом сервере сохранять заметки может только окно гильдии самой игры: кнопка заметки теперь объясняет это и открывает это окно."
 L["Fixes"] = "Исправления"
 L["No more errors when hovering creatures in instances, or the 3D portrait of a member."] = "Больше нет ошибок при наведении на существ в подземельях или на 3D-портрет участника."
+
+-- 1.0.11
+L["Role"] = "Роль"
+L["My roles"] = "Мои роли"
+L["Click to add or remove this role. Your roles show in the members list and in the events."] = "Нажмите, чтобы добавить или убрать эту роль. Ваши роли видны в списке участников и в событиях."
+L["Several roles"] = "Несколько ролей"
+L["Check every role you can play (tank, healer, damage): your sign-ups and join requests carry them all."] = "Отметьте все роли, которые можете играть (танк, лекарь, урон): ваши записи и запросы на вступление содержат их все."
+L["Roles in the members list"] = "Роли в списке участников"
+L["Pick your roles at the top of the members page: a new Role column shows everyone's role icons, and sorts by them."] = "Выберите роли вверху страницы участников: новый столбец «Роль» показывает значки ролей каждого и позволяет сортировать по ним."
