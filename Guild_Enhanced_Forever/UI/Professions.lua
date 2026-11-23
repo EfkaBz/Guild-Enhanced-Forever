@@ -122,6 +122,40 @@ local function readSkills()
   end
 end
 
+-- the reagents of a recipe, { { itemID, count }, ... } (modern API; optional slots left out)
+local function modernReagents(T, id)
+  local list = {}
+  if T.GetRecipeSchematic then
+    local ok, sch = pcall(T.GetRecipeSchematic, id, false)
+    if ok and type(sch) == "table" and type(sch.reagentSlotSchematics) == "table" then
+      for _, slot in ipairs(sch.reagentSlotSchematics) do
+        local rg = type(slot.reagents) == "table" and slot.reagents[1]
+        if rg and rg.itemID and (slot.quantityRequired or 0) > 0 and slot.required ~= false then
+          list[#list + 1] = { rg.itemID, slot.quantityRequired }
+        end
+      end
+      if #list > 0 then return list end
+    end
+  end
+  if T.GetRecipeNumReagents and T.GetRecipeReagentInfo then
+    local ok, n = pcall(T.GetRecipeNumReagents, id)
+    for i = 1, ok and n or 0 do
+      local _, _, count = T.GetRecipeReagentInfo(id, i)
+      local link = T.GetRecipeReagentItemLink and T.GetRecipeReagentItemLink(id, i)
+      local item = link and tonumber(link:match("item:(%d+)"))
+      if item and count then list[#list + 1] = { item, count } end
+    end
+  end
+  return list
+end
+
+-- "itemID:count,itemID:count" (what is shared)
+local function reagentString(list)
+  local out = {}
+  for _, it in ipairs(list) do out[#out + 1] = it[1] .. ":" .. it[2] end
+  return table.concat(out, ",")
+end
+
 -- WoW Forever: the profession window works with C_TradeSkillUI (the modern API)
 local function readModernTradeSkill()
   ensureNames()
@@ -135,7 +169,7 @@ local function readModernTradeSkill()
     or byLocalName[info.parentProfessionName or ""] or byLocalName[info.professionName or ""]
   if not key then return end
   local ids = T.GetAllRecipeIDs and T.GetAllRecipeIDs() or {}
-  local codes, seen = {}, {}
+  local codes, seen, rg = {}, {}, {}
   for _, id in ipairs(ids) do
     local rok, r = pcall(T.GetRecipeInfo, id)
     if rok and type(r) == "table" and r.learned then
@@ -148,7 +182,12 @@ local function readModernTradeSkill()
       local code
       if link and (link:find("enchant:") or r.isEnchantingRecipe) then code = "e" .. id
       elseif item then code = item end
-      if code and not seen[code] then seen[code] = true; codes[#codes + 1] = code end
+      if code and not seen[code] then
+        seen[code] = true
+        codes[#codes + 1] = code
+        local s = reagentString(modernReagents(T, id))
+        if s ~= "" then rg[code] = s end
+      end
     end
   end
   if #codes == 0 then return end
@@ -157,6 +196,7 @@ local function readModernTradeSkill()
   p.r = info.skillLevel or p.r or 0
   p.m = info.maxSkillLevel or p.m or 0
   p.rc = codes
+  p.rg = rg
 end
 
 local function readTradeSkill()
@@ -165,18 +205,28 @@ local function readTradeSkill()
   local name, rank, maxRank = GetTradeSkillLine()
   local key = name and byLocalName[name]
   if not key then return end
-  local codes, n = {}, GetNumTradeSkills() or 0
+  local codes, rg, n = {}, {}, GetNumTradeSkills() or 0
   for i = 1, n do
     local _, kind = GetTradeSkillInfo(i)
     if kind and kind ~= "header" then
       local link = GetTradeSkillItemLink(i)
       local id = link and link:match("item:(%d+)")
-      if id then codes[#codes + 1] = id end
+      if id then
+        codes[#codes + 1] = id
+        local list = {}
+        for j = 1, (GetTradeSkillNumReagents and GetTradeSkillNumReagents(i)) or 0 do
+          local _, _, count = GetTradeSkillReagentInfo(i, j)
+          local rl = GetTradeSkillReagentItemLink and GetTradeSkillReagentItemLink(i, j)
+          local item = rl and tonumber(rl:match("item:(%d+)"))
+          if item and count then list[#list + 1] = { item, count } end
+        end
+        if #list > 0 then rg[id] = reagentString(list) end
+      end
     end
   end
   if #codes == 0 then return end
   myProfs[key] = myProfs[key] or {}
-  myProfs[key].r, myProfs[key].m, myProfs[key].rc = rank, maxRank, codes
+  myProfs[key].r, myProfs[key].m, myProfs[key].rc, myProfs[key].rg = rank, maxRank, codes, rg
 end
 
 local function readCraft()
@@ -184,19 +234,30 @@ local function readCraft()
   local name, rank, maxRank = GetCraftDisplaySkillLine()
   local key = name and byLocalName[name]
   if not key then return end -- (the hunter's beast training uses the same window)
-  local codes = {}
+  local codes, rg = {}, {}
   for i = 1, GetNumCrafts() or 0 do
     local _, _, kind = GetCraftInfo(i)
     if kind and kind ~= "header" then
       local link = GetCraftItemLink and GetCraftItemLink(i)
       local id = link and (link:match("enchant:(%d+)") or link:match("spell:(%d+)"))
       local item = link and link:match("item:(%d+)")
-      if id then codes[#codes + 1] = "e" .. id elseif item then codes[#codes + 1] = item end
+      local code = id and ("e" .. id) or item
+      if code then
+        codes[#codes + 1] = code
+        local list = {}
+        for j = 1, (GetCraftNumReagents and GetCraftNumReagents(i)) or 0 do
+          local _, _, count = GetCraftReagentInfo(i, j)
+          local rl = GetCraftReagentItemLink and GetCraftReagentItemLink(i, j)
+          local ri = rl and tonumber(rl:match("item:(%d+)"))
+          if ri and count then list[#list + 1] = { ri, count } end
+        end
+        if #list > 0 then rg[code] = reagentString(list) end
+      end
     end
   end
   if #codes == 0 then return end
   myProfs[key] = myProfs[key] or {}
-  myProfs[key].r, myProfs[key].m, myProfs[key].rc = rank, maxRank, codes
+  myProfs[key].r, myProfs[key].m, myProfs[key].rc, myProfs[key].rg = rank, maxRank, codes, rg
 end
 
 -- /gui prof: what the addon reads (to understand an empty directory)
@@ -255,6 +316,84 @@ local function encode()
   return list
 end
 
+-- Reagents ------------------------------------------------------------------------------------------
+-- what the recipes need: one record per (player, profession), id "Name:key", r =
+-- "code=itemID:count,itemID:count;code=..." (read when the crafter opens the profession window)
+Sync.Register("rg", {
+  keep = 30 * 86400,
+  validate = function(rec)
+    return rec.by == rec.ed and type(rec.ed) == "string" and rec.id:sub(1, #rec.ed + 1) == rec.ed .. ":"
+      and (rec.del or type(rec.r) == "string")
+  end,
+})
+
+local function pushReagents()
+  for key, p in pairs(myProfs) do
+    if p.rg and next(p.rg) then
+      local parts = {}
+      for _, code in ipairs(p.rc or {}) do
+        if p.rg[code] then parts[#parts + 1] = code .. "=" .. p.rg[code] end
+      end
+      local s, id = table.concat(parts, ";"), me .. ":" .. key
+      local old = Sync.Get("rg", id)
+      if s ~= "" and not (old and old.r == s) then Sync.Put("rg", { id = id, r = s }, true) end
+    end
+  end
+end
+
+local rgIndex -- code -> "itemID:count,..." (built again when the records change)
+ns.On("SYNC_RG", function() rgIndex = nil end)
+local localRg = {} -- asked to the game for a recipe nobody shared (enchantments)
+
+local function reagentsOf(code)
+  if not rgIndex then
+    rgIndex = {}
+    for _, rec in ipairs(Sync.All("rg")) do
+      for c, s in (rec.r or ""):gmatch("([^;=]+)=([^;]*)") do
+        if not rgIndex[c] and s ~= "" then rgIndex[c] = s end
+      end
+    end
+  end
+  local s = rgIndex[code]
+  if not s then
+    for _, p in pairs(myProfs) do if p.rg and p.rg[code] then s = p.rg[code] break end end
+  end
+  if not s then
+    local spell = tonumber(code:match("^e(%d+)$"))
+    if spell and C_TradeSkillUI then
+      if localRg[code] == nil then localRg[code] = reagentString(modernReagents(C_TradeSkillUI, spell)) end
+      if localRg[code] ~= "" then s = localRg[code] end
+    end
+  end
+  if not s then return nil end
+  local list = {}
+  for id, n in s:gmatch("(%d+):(%d+)") do list[#list + 1] = { tonumber(id), tonumber(n) } end
+  return #list > 0 and list or nil
+end
+
+local GetItemCount = (C_Item and C_Item.GetItemCount) or GetItemCount
+-- the reagents in a tooltip: icon, name, count needed (for qty crafts) and how many I have (bags and bank)
+local function addReagents(tt, code, qty)
+  qty = math.max(1, qty or 1)
+  local list = code and reagentsOf(code)
+  tt:AddLine(" ")
+  if not list then
+    tt:AddLine(L["Reagents not shared yet (the crafter has to open the profession window once)."], 0.55, 0.5, 0.65, true)
+    return
+  end
+  tt:AddLine(L["Reagents"] .. (qty > 1 and ("  |cffffffff(" .. qty .. " x)|r") or ""), color(C.gold))
+  for _, it in ipairs(list) do
+    local id, n = it[1], it[2] * qty
+    local name, _, quality, _, _, _, _, _, _, icon = GetItemInfo(id)
+    if not name then missing = true end
+    icon = icon or (ItemIcon and ItemIcon(id)) or "Interface\\Icons\\INV_Misc_QuestionMark"
+    local qc = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality or 1]
+    local have = GetItemCount and GetItemCount(id, true) or 0
+    tt:AddDoubleLine("|T" .. icon .. ":14:14:0:0|t " .. (qc and qc.hex or "|cffffffff") .. (name or ("#" .. id)) .. "|r",
+      "x" .. n .. "  " .. (have >= n and "|cff1eff00" or "|cff888888") .. "(" .. have .. ")|r", 1, 1, 1, 1, 1, 1)
+  end
+end
+
 local pushPending
 -- shares my professions when they changed (a few seconds after the last change)
 local function push()
@@ -263,6 +402,7 @@ local function push()
   C_Timer.After(5, function()
     pushPending = nil
     if not Sync.Started() then return end
+    pushReagents()
     local list = encode()
     local old = Sync.Get("prof", me)
     if old and ns.Net.Encode(old.p or {}) == ns.Net.Encode(list) then return end
@@ -425,15 +565,17 @@ local function recipeRow(i)
   r.name:SetPoint("RIGHT", -110, 0)
   r.ask = S.Button(r, L["Request"], 90, 20)
   r.ask:SetPoint("RIGHT", -6, 0)
-  r:HookScript("OnEnter", function(self)
+  r.showTip = function(self)
     if self.link then
       GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
       GameTooltip:SetHyperlink(self.link)
+      addReagents(GameTooltip, self.code)
       GameTooltip:AddLine(" ")
       GameTooltip:AddLine(L["Shift-click: link in chat"], 0.64, 0.6, 0.72)
       GameTooltip:Show()
     end
-  end)
+  end
+  r:HookScript("OnEnter", r.showTip)
   r:HookScript("OnLeave", function() GameTooltip:Hide() end)
   r:SetScript("OnClick", function(self)
     if self.link and IsModifiedClick("CHATLINK") and ChatEdit_InsertLink then ChatEdit_InsertLink(self.link) end
@@ -577,6 +719,27 @@ local function reqRow(i)
   r.b1:SetPoint("RIGHT", -8, 0)
   r.b2 = S.Button(r, L["Decline"], 104, 22)
   r.b2:SetPoint("RIGHT", r.b1, "LEFT", -6, 0)
+  -- hover: the item and its reagents (for the quantity asked)
+  r:EnableMouse(true)
+  r.showTip = function(self)
+    local rec = self.rec
+    if not (rec and rec.code) then return end
+    local _, link = recipeInfo(rec.code)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    if link then GameTooltip:SetHyperlink(link) else GameTooltip:SetText(rec.what or "", 1, 1, 1) end
+    addReagents(GameTooltip, rec.code, rec.qty or 1)
+    if link then
+      GameTooltip:AddLine(" ")
+      GameTooltip:AddLine(L["Shift-click: link in chat"], 0.64, 0.6, 0.72)
+    end
+    GameTooltip:Show()
+  end
+  r:SetScript("OnEnter", r.showTip)
+  r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  r:SetScript("OnMouseUp", function(self)
+    local link = self.rec and self.rec.code and select(2, recipeInfo(self.rec.code))
+    if link and IsModifiedClick("CHATLINK") and ChatEdit_InsertLink then ChatEdit_InsertLink(link) end
+  end)
   ui.reqs[i] = r
   return r
 end
@@ -598,6 +761,7 @@ local function refreshRequests(animate)
   for i, rec in ipairs(list) do
     if rec.st == "open" or rec.st == "taken" then open = open + 1 end
     local r = reqRow(i)
+    r.rec = rec
     local _, _, icon = recipeInfo(rec.code or "0")
     r.icon.tex:SetTexture(icon or "Interface\\Icons\\INV_Misc_Bag_10")
     r.what:SetText((rec.qty or 1) .. " x  " .. (rec.what or ""))
@@ -746,7 +910,7 @@ function ns.RefreshProfessions(animate)
     for i, rc in ipairs(recs) do
       n = i
       local r = recipeRow(i)
-      r.link = rc.link
+      r.link, r.code = rc.link, rc.code
       r.icon.tex:SetTexture(rc.icon or "Interface\\Icons\\INV_Misc_QuestionMark")
       local qc = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[rc.q or 1]
       r.name:SetText((qc and qc.hex or "") .. rc.name .. "|r")
@@ -889,4 +1053,13 @@ ns.On("SYNC_CRAFT", function(rec)
 end)
 local iev = CreateFrame("Frame")
 pcall(iev.RegisterEvent, iev, "GET_ITEM_INFO_RECEIVED")
-iev:SetScript("OnEvent", function() if missing then later() end end)
+iev:SetScript("OnEvent", function()
+  if not missing then return end
+  later()
+  -- a recipe tooltip waiting for a reagent's name: drawn again
+  local owner = GameTooltip:IsShown() and GameTooltip:GetOwner()
+  if owner and owner.showTip and owner:IsMouseOver() then
+    missing = false
+    owner:showTip()
+  end
+end)

@@ -311,8 +311,8 @@ local function apply(coll, rec, fromNet, sender)
   return true
 end
 
--- writes a record (new version) and broadcasts it
-function Sync.Put(coll, rec)
+-- writes a record (new version) and broadcasts it (bulk: behind the urgent messages)
+function Sync.Put(coll, rec, bulk)
   local s = store(coll)
   if not s then return end
   local old = s[rec.id]
@@ -321,7 +321,7 @@ function Sync.Put(coll, rec)
   rec.by = rec.by or ns.MyName()
   rec.ed = ns.MyName() -- who made this change (full name)
   apply(coll, rec, false)
-  Net.Send("P", { c = coll, r = rec }, "GUILD")
+  Net.Send("P", { c = coll, r = rec }, "GUILD", nil, bulk)
   return rec
 end
 

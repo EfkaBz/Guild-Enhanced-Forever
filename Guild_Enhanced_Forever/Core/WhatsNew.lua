@@ -5,10 +5,10 @@ local S, L = ns.Skin, ns.L
 
 -- the new things of this version: icon, title, text (English keys, translated in the locales)
 local NEWS = {
-  { "Interface\\Icons\\Ability_Defend", "Several roles",
-    "Check every role you can play (tank, healer, damage): your sign-ups and join requests carry them all." },
-  { "Interface\\Icons\\INV_Misc_GroupNeedMore", "Roles in the members list",
-    "Pick your roles at the top of the members page: a new Role column shows everyone's role icons, and sorts by them." },
+  { "Interface\\Icons\\Trade_Alchemy", "Reagents in the recipe tooltips",
+    "Hover a recipe in the professions directory to see its reagents and how many you have. Crafters share them when they open their profession window." },
+  { "Interface\\Icons\\INV_Hammer_20", "Reagents of the craft requests",
+    "Hover a craft request to see every reagent it needs, for the quantity asked." },
 }
 
 local function version()
